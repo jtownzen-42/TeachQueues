@@ -8,6 +8,13 @@
       "when": 1793459182425,
       "tag": "0000_last_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793473308445,
+      "tag": "0001_day2_oauth_cache",
+      "breakpoints": true
     }
   ]
 }

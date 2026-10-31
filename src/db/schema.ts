@@ -1,5 +1,10 @@
 import { pgTable, text, timestamp, boolean, uuid, integer, numeric, date, jsonb, pgEnum } from "drizzle-orm/pg-core";
 
+export type BufferChannel = {
+  id: string; name: string; displayName?: string | null; service: string; descriptor?: string;
+  avatar?: string | null; isDisconnected?: boolean; isLocked?: boolean;
+};
+
 export const campaignKind = pgEnum("campaign_kind", ["organic", "ad"]);
 export const draftStatus = pgEnum("draft_status", ["draft", "approved", "queued"]);
 export const lessonFormat = pgEnum("lesson_format", ["glossary", "prompt_demo", "misconception"]);
@@ -15,7 +20,14 @@ export const users = pgTable("users", {
   accessTokenEnc: text("access_token_enc"),
   refreshTokenEnc: text("refresh_token_enc"),
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  tokenScope: text("token_scope"),
+  // Cached Buffer org + channels so we don't spend shared API quota on every page view.
+  orgId: text("org_id"),
+  orgName: text("org_name"),
+  channelsCache: jsonb("channels_cache").$type<BufferChannel[]>(),
+  channelsSyncedAt: timestamp("channels_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const products = pgTable("products", {
