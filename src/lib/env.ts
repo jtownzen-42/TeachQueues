@@ -16,7 +16,6 @@ export const env = {
   get redirectUri() { return req("BUFFER_REDIRECT_URI"); },
   get sessionSecret() { return req("SESSION_SECRET"); },
   get tokenEncKey() { return req("TOKEN_ENC_KEY"); },
-  get databaseUrl() { return req("DATABASE_URL"); },
   get scopes() { return process.env.BUFFER_SCOPES?.trim() || DEFAULT_SCOPES; },
   /** Test mode = every Buffer post is created with saveToDraft: true. Defaults ON. */
   get testMode() { return (process.env.TEST_MODE ?? "true").trim().toLowerCase() !== "false"; },

@@ -29,6 +29,7 @@ npm install
 npm run dev:https            # https://localhost:3000 (Buffer requires HTTPS, even on localhost)
 npm test                     # PKCE, crypto, DST-safe time zone tests
 npm run db:check             # apply migrations to in-memory Postgres (PGlite)
-DATABASE_URL=... npm run db:migrate   # apply migrations to Neon
+DATABASE_URL=... npm run db:migrate        # apply migrations to Neon (TCP 5432)
+DATABASE_URL=... npm run db:migrate:http   # same, over Neon HTTPS (when 5432 is blocked)
 ```
 Register `https://localhost:3000/api/auth/callback` as a redirect URI on the Buffer app client.

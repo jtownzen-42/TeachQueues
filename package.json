@@ -12,7 +12,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:check": "tsx scripts/migrate-check-pglite.ts"
+    "db:check": "tsx scripts/migrate-check-pglite.ts",
+    "db:migrate:http": "tsx scripts/migrate-http.ts"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",
     "@eslint/eslintrc": "^3",
+    "@neondatabase/serverless": "^1.2.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",

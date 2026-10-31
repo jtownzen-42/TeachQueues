@@ -2,10 +2,11 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { resolveDatabaseUrl } from "../src/db/url";
 
 async function main() {
-  const url = process.env.DATABASE_URL?.trim();
-  if (!url) throw new Error("DATABASE_URL is not set");
+  const url = resolveDatabaseUrl();
+  if (!url) throw new Error("No Postgres URL env var set (DATABASE_URL or a Neon-integration variant)");
   const pool = new Pool({ connectionString: url, max: 1 });
   try {
     await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });
