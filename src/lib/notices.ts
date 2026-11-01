@@ -38,6 +38,31 @@ export function noticesFrom(sp: Record<string, string | string[] | undefined>): 
   return out;
 }
 
+// Lesson desk banners (/products, /products/[id], /lessons/[id]) come from ?n=<code>.
+const DESK: Record<string, Notice> = {
+  product_created: { kind: "info", text: "Product added." },
+  product_saved: { kind: "info", text: "Product saved." },
+  product_deleted: { kind: "info", text: "Product and its lessons deleted." },
+  product_in_use: { kind: "error", text: "This product is used by a campaign or an approved or queued post, so it can't be deleted yet." },
+  lesson_created: { kind: "info", text: "Lesson added. Review the drafted copy below." },
+  lesson_saved: { kind: "info", text: "Lesson saved. Use “Redraft from lesson” to refresh the copy." },
+  lesson_deleted: { kind: "info", text: "Lesson deleted." },
+  lesson_in_use: { kind: "error", text: "This lesson has an approved or queued post, so it can't be deleted yet." },
+  draft_saved: { kind: "info", text: "Draft saved. Nothing was sent to Buffer." },
+  not_found: { kind: "error", text: "That item doesn't exist or isn't yours." },
+  forbidden: { kind: "error", text: "That request came from another site, so it was ignored." },
+  error: { kind: "error", text: "Something went wrong saving that. Please try again." },
+};
+
+export function deskNoticesFrom(sp: Record<string, string | string[] | undefined>): Notice[] {
+  const n = one(sp.n);
+  return n && DESK[n] ? [DESK[n]] : [];
+}
+
+export function deskNotice(code: keyof typeof DESK | string): Notice {
+  return DESK[code] ?? DESK.error;
+}
+
 /** Friendly text for a channel load failure (never raw upstream messages). */
 export function channelErrorText(e: unknown): string {
   const name = (e as { name?: string })?.name;
