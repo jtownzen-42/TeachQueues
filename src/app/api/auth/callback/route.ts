@@ -7,13 +7,14 @@ import { exchangeCode, OAuthError } from "@/lib/buffer/oauth";
 import { ACCOUNT_QUERY, bufferGraphQL, type AccountData } from "@/lib/buffer/api";
 import { tokenColumns } from "@/lib/buffer/tokens";
 import { getChannels } from "@/lib/buffer/sync";
+import { safeTimeZone } from "@/lib/tz";
 
 export const dynamic = "force-dynamic";
 
 function home(req: NextRequest, params: Record<string, string>) {
   const u = new URL("/", req.nextUrl.origin);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-  return NextResponse.redirect(u);
+  return NextResponse.redirect(u, 303);
 }
 
 function safeEqual(a: string, b: string) {
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
       bufferAccountId: account.id,
       email: account.email ?? null,
       displayName: account.name ?? null,
-      tz: account.timezone || "America/Chicago",
+      tz: safeTimeZone(account.timezone),
       orgId: org?.id ?? null,
       orgName: org?.name ?? null,
       ...cols,

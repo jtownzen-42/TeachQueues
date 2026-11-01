@@ -24,3 +24,14 @@ describe("rate limit headers", () => {
     expect(parseRateLimit(h)).toMatchObject({ limit: 100, remaining: 97, resetSeconds: 812 });
   });
 });
+
+import { parseRetryAfter } from "@/lib/buffer/api";
+describe("Retry-After", () => {
+  it("parses seconds, HTTP dates and junk", () => {
+    expect(parseRetryAfter("30")).toBe(30);
+    expect(parseRetryAfter(null)).toBe(60);
+    expect(parseRetryAfter("soon")).toBe(60);
+    const now = Date.parse("2026-11-01T00:00:00Z");
+    expect(parseRetryAfter("Sun, 01 Nov 2026 00:02:00 GMT", now)).toBe(120);
+  });
+});

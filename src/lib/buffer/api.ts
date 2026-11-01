@@ -8,6 +8,16 @@ export class BufferApiError extends Error {
   constructor(message: string, public status: number, public retryAfter?: number, public rateLimit?: RateLimitInfo) {
     super(message);
   }
+  name = "BufferApiError";
+}
+
+/** Retry-After is seconds or an HTTP date; fall back to 60s when unparseable. */
+export function parseRetryAfter(v: string | null, now = Date.now()): number {
+  if (!v) return 60;
+  const n = Number(v);
+  if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? Math.max(0, Math.ceil((t - now) / 1000)) : 60;
 }
 
 /** Parse IETF RateLimit headers, e.g. `RateLimit: limit=100, remaining=97, reset=812`. */
@@ -41,7 +51,7 @@ export async function bufferGraphQL<T>(accessToken: string, query: string, varia
   });
   lastRateLimit = parseRateLimit(res.headers);
   if (res.status === 429) {
-    const ra = Number(res.headers.get("retry-after") ?? "60");
+    const ra = parseRetryAfter(res.headers.get("retry-after"));
     throw new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit);
   }
   if (res.status === 401) throw new BufferApiError("Buffer session expired. Please reconnect.", 401);

@@ -22,5 +22,5 @@ export async function GET() {
     state,
     codeChallenge: codeChallengeS256(verifier),
   });
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(url, 302);
 }

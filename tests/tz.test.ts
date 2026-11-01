@@ -28,3 +28,12 @@ describe("Chicago local time -> UTC across the Nov 1 2026 DST change", () => {
     expect(() => localToUtcIso("2026-11-10 9am", tz)).toThrow();
   });
 });
+
+import { safeTimeZone } from "@/lib/tz";
+describe("safeTimeZone", () => {
+  it("keeps valid IANA zones and falls back for junk", () => {
+    expect(safeTimeZone("Europe/Berlin")).toBe("Europe/Berlin");
+    expect(safeTimeZone("Not/AZone")).toBe("America/Chicago");
+    expect(safeTimeZone(null)).toBe("America/Chicago");
+  });
+});

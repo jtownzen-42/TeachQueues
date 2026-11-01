@@ -1,3 +1,16 @@
+export const DEFAULT_TZ = "America/Chicago";
+
+/** Returns tz if it's a real IANA zone, else the default (bad zones would throw later). */
+export function safeTimeZone(tz: string | null | undefined): string {
+  if (!tz) return DEFAULT_TZ;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return DEFAULT_TZ;
+  }
+}
+
 // Local wall-clock time in the user's zone -> UTC ISO string, DST-safe.
 import { TZDate } from "@date-fns/tz";
 
