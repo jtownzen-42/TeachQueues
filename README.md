@@ -16,8 +16,13 @@ Next.js 15 (App Router) · Drizzle ORM + Postgres (Neon) · iron-session · Verc
 - Tokens are stored AES-256-GCM encrypted (`TOKEN_ENC_KEY`); the browser only holds our own session id.
 - Refresh tokens are single-use: refresh happens under `SELECT … FOR UPDATE`, the new pair is persisted
   before use, and a spent token is never retried (`src/lib/buffer/tokens.ts`).
-- `POST /api/auth/logout` forgets tokens; `?delete=1` deletes all of the user's data.
-- Test mode (`TEST_MODE=true`, default) means posts are created with `saveToDraft: true`.
+- `POST /api/auth/logout` forgets tokens; `delete=1` (query or form field) deletes all of the user's data.
+- `POST /api/channels/sync` (the Re-sync button) forces a channel sync, 60 s cooldown, then 303s home with a notice.
+- In production, `src/middleware.ts` 308-redirects the alias hosts to the host in `BUFFER_REDIRECT_URI`
+  so OAuth cookies and `redirect_uri` always match.
+- DB URLs are normalized to `sslmode=verify-full` (`src/db/url.ts`), which silences pg's sslmode alias warning.
+- Test mode (`TEST_MODE=true`, default) means posts are created with `saveToDraft: true`; every create-post
+  input must go through `draftSafe()` in `src/lib/testmode.ts`.
 
 Pattern adapted from Buffer's MIT-licensed
 [app-client-starter-app](https://github.com/bufferapp/buffer-sample-apps/tree/main/samples/app-client-starter-app).
