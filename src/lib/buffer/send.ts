@@ -133,7 +133,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   const testMode = isTestMode(deps.envTestMode, u.testMode);
   let result: CreatePostResult;
   try {
-    const payload = draftSafe(buildCreatePostInput({ channelId: channel.id, text, mode: input.mode, dueAtUtc, testMode }), testMode);
+    const payload = draftSafe(buildCreatePostInput({ channelId: channel.id, network, text, mode: input.mode, dueAtUtc, testMode }), testMode);
     if (payload.saveToDraft !== true) throw Object.assign(new Error("not a draft"), { name: "TestModeViolation" }); // belt and braces
     result = parseCreatePostResponse(await bufferGraphQL<unknown>(token, CREATE_POST_MUTATION, { input: payload }));
   } catch (e) {
@@ -144,6 +144,8 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   }
 
   if (!result.ok) {
+    // Log only the error type (e.g. InvalidInputError); the sanitized message is stored on the row.
+    console.error("[teachqueue] send: Buffer rejected the post", result.typename ?? "MutationError");
     const m = sendErrorText(result);
     await markFailed(db, claimedId, m.text);
     return { code: "rejected", lessonId };

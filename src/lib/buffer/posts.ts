@@ -40,13 +40,33 @@ export type CreatePostInput = {
   mode: "addToQueue" | "customScheduled";
   dueAt?: string;
   saveToDraft: true;
+  metadata?: CreatePostMetadata;
 };
+
+/** CreatePostInput.metadata (PostInputMetaData). Only what our networks need:
+ *  - Facebook: FacebookPostMetadataInput.type is REQUIRED (PostTypeFacebook! = post | reel | story).
+ *    Without it Buffer answers "Invalid post: Facebook posts require a type (post, story, or reel)."
+ *    A text post with a link is a plain feed "post".
+ *  - LinkedIn (LinkedInPostMetadataInput) and X (TwitterPostMetadataInput) have no required fields.
+ *  Source: https://developers.buffer.com/reference.md (FacebookPostMetadataInput, PostTypeFacebook,
+ *  LinkedInPostMetadataInput, TwitterPostMetadataInput), checked 2026-11-01. */
+export type CreatePostMetadata = { facebook?: { type: "post" } };
+
+export function metadataForNetwork(network: Network): CreatePostMetadata | undefined {
+  switch (network) {
+    case "facebook":
+      return { facebook: { type: "post" } };
+    case "linkedin":
+    case "x":
+      return undefined;
+  }
+}
 
 /** Build the createPost input. This task never posts for real, so saveToDraft is always true
  *  here, and the caller still runs draftSafe() on the result as the last step before sending.
  *  Only the listed fields are copied: nothing from a form can reach the payload. */
 export function buildCreatePostInput(opts: {
-  channelId: string; text: string; mode: SendMode; dueAtUtc?: string | null; testMode: boolean;
+  channelId: string; network: Network; text: string; mode: SendMode; dueAtUtc?: string | null; testMode: boolean;
 }): CreatePostInput {
   const input: CreatePostInput = {
     channelId: opts.channelId,
@@ -59,12 +79,14 @@ export function buildCreatePostInput(opts: {
     if (!opts.dueAtUtc) throw new Error("dueAtUtc is required for a custom time");
     input.dueAt = new Date(opts.dueAtUtc).toISOString();
   }
+  const metadata = metadataForNetwork(opts.network);
+  if (metadata) input.metadata = metadata;
   return input;
 }
 
 export type CreatePostResult =
   | { ok: true; postId: string; status: string | null; dueAt: string | null; externalLink: string | null }
-  | { ok: false; message: string };
+  | { ok: false; message: string; typename?: string | null };
 
 type Raw = {
   createPost?: {
@@ -84,7 +106,7 @@ export function parseCreatePostResponse(data: unknown): CreatePostResult {
   if (postId && (cp.__typename === undefined || cp.__typename === "PostActionSuccess")) {
     return { ok: true, postId, status: str(cp.post?.status), dueAt: str(cp.post?.dueAt), externalLink: str(cp.post?.externalLink) };
   }
-  return { ok: false, message: str(cp.message) ?? "Buffer didn't accept the post." };
+  return { ok: false, message: str(cp.message) ?? "Buffer didn't accept the post.", typename: str(cp.__typename) };
 }
 
 /** Buffer `service` -> our network key. Anything else isn't offered. */

@@ -55,6 +55,8 @@ beforeEach(async () => {
     { id: "ch_test_x", name: "A X", service: "twitter" },
     { id: "ch_test_locked", name: "Locked FB", service: "facebook", isLocked: true },
     { id: "ch_test_ig", name: "Insta", service: "instagram" },
+    { id: "ch_test_fb", name: "A Facebook Page", service: "facebook" },
+    { id: "ch_test_yt", name: "A YouTube", service: "youtube" },
   ]);
   B = await seedUser("acctB", [{ id: "ch_test_b", name: "B LinkedIn", service: "linkedin" }]);
   respond = () => json(okBody());
@@ -259,5 +261,48 @@ describe("Delete my data still removes buffer_posts", () => {
     await send(A.userId, { draftId: A.draftId, channelId: "ch_test_li", mode: "queue" });
     await db.delete(s.users).where(eq(s.users.id, A.userId));
     expect(await rowsFor(A.draftId)).toHaveLength(0);
+  });
+});
+
+describe("Facebook metadata + Buffer errors (prod regression 2026-11-01)", () => {
+  it("Facebook sends metadata.facebook.type='post' with saveToDraft:true", async () => {
+    const r = await send(A.userId, { draftId: A.draftId, channelId: "ch_test_fb", mode: "queue" });
+    expect(r.code).toBe("sent");
+    expect(sentBodies()[0].variables.input).toEqual({
+      channelId: "ch_test_fb", text: "FB text", schedulingType: "automatic", mode: "addToQueue", saveToDraft: true,
+      metadata: { facebook: { type: "post" } },
+    });
+  });
+
+  it("YouTube channels are never offered/sent (they need a video asset)", async () => {
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_yt", mode: "queue" })).code).toBe("not_found");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a Buffer MutationError is stored as Buffer's sanitized reason, and that failed row can be retried once", async () => {
+    respond = () => json({ data: { createPost: { __typename: "InvalidInputError", message: `Invalid post: Facebook posts require a type (post, story, or reel). Bearer ${TOKEN}` } } });
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_fb", mode: "queue" })).code).toBe("rejected");
+    const [row] = await rowsFor(A.draftId);
+    expect(row.error).toContain("Facebook posts require a type (post, story, or reel)");
+    expect(row.error).not.toContain(TOKEN);
+    expect(row).toMatchObject({ lastStatus: "failed", bufferPostId: null, checkedAt: null });
+    respond = () => json(okBody("post_FAKE_FB"));
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_fb", mode: "queue" })).code).toBe("sent");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sentBodies()[1].variables.input.metadata).toEqual({ facebook: { type: "post" } });
+  });
+
+  it("HTTP 200 + errors[UNAUTHORIZED] maps to reconnect, never leaks the token", async () => {
+    respond = () => json({ data: null, errors: [{ message: `Not authorized ${TOKEN}`, extensions: { code: "UNAUTHORIZED" } }] });
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_li", mode: "queue" })).code).toBe("reconnect");
+    const [row] = await rowsFor(A.draftId);
+    expect(row.error).toMatch(/Connect again/);
+    expect(row.error).not.toContain(TOKEN);
+  });
+
+  it("HTTP 200 + errors[RATE_LIMIT_EXCEEDED] maps to busy", async () => {
+    respond = () => json({ data: null, errors: [{ message: "Too many requests", extensions: { code: "RATE_LIMIT_EXCEEDED" } }] }, 200, { "retry-after": "120" });
+    const r = await send(A.userId, { draftId: A.draftId, channelId: "ch_test_li", mode: "queue" });
+    expect(r).toMatchObject({ code: "busy", retryAfter: 120 });
   });
 });

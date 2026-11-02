@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCreatePostInput, CREATE_POST_MUTATION, networkForService, parseCreatePostResponse,
+  metadataForNetwork, buildCreatePostInput, CREATE_POST_MUTATION, networkForService, parseCreatePostResponse,
   sanitizeBufferMessage, sendErrorText,
 } from "@/lib/buffer/posts";
 import { draftSafe, TestModeViolation } from "@/lib/testmode";
@@ -20,7 +20,7 @@ describe("draftSafe enforcement on the send path", () => {
   it("buildCreatePostInput always sets saveToDraft:true, with Test mode on or off", () => {
     for (const testMode of [true, false]) {
       for (const mode of ["queue", "custom"] as const) {
-        const input = buildCreatePostInput({ channelId: "ch_test_1", text: "Hello", mode, dueAtUtc: "2026-11-10T15:00:00.000Z", testMode });
+        const input = buildCreatePostInput({ channelId: "ch_test_1", network: "x", text: "Hello", mode, dueAtUtc: "2026-11-10T15:00:00.000Z", testMode });
         expect(input.saveToDraft).toBe(true);
         expect(draftSafe(input, testMode).saveToDraft).toBe(true);
       }
@@ -28,7 +28,7 @@ describe("draftSafe enforcement on the send path", () => {
   });
 
   it("copies only known fields (extra keys from a form can't reach the payload)", () => {
-    const forged = { channelId: "ch_test_1", text: "Hi", mode: "queue", testMode: false, saveToDraft: false, schedulingType: "notification" } as unknown as Parameters<typeof buildCreatePostInput>[0];
+    const forged = { channelId: "ch_test_1", network: "x", text: "Hi", mode: "queue", testMode: false, saveToDraft: false, schedulingType: "notification" } as unknown as Parameters<typeof buildCreatePostInput>[0];
     const input = buildCreatePostInput(forged);
     expect(input).toEqual({ channelId: "ch_test_1", text: "Hi", schedulingType: "automatic", mode: "addToQueue", saveToDraft: true });
   });
@@ -36,17 +36,17 @@ describe("draftSafe enforcement on the send path", () => {
 
 describe("buildCreatePostInput", () => {
   it("queue mode: addToQueue and no dueAt", () => {
-    const i = buildCreatePostInput({ channelId: "ch_test_1", text: "t", mode: "queue", dueAtUtc: "2026-11-10T15:00:00.000Z", testMode: true });
+    const i = buildCreatePostInput({ channelId: "ch_test_1", network: "x", text: "t", mode: "queue", dueAtUtc: "2026-11-10T15:00:00.000Z", testMode: true });
     expect(i.mode).toBe("addToQueue");
     expect(i).not.toHaveProperty("dueAt");
     expect(i.schedulingType).toBe("automatic");
   });
   it("custom time: customScheduled with a UTC ISO dueAt", () => {
-    const i = buildCreatePostInput({ channelId: "ch_test_1", text: "t", mode: "custom", dueAtUtc: "2026-11-10T15:00:00Z", testMode: true });
+    const i = buildCreatePostInput({ channelId: "ch_test_1", network: "x", text: "t", mode: "custom", dueAtUtc: "2026-11-10T15:00:00Z", testMode: true });
     expect(i).toMatchObject({ mode: "customScheduled", dueAt: "2026-11-10T15:00:00.000Z" });
   });
   it("custom time without dueAt is a programming error", () => {
-    expect(() => buildCreatePostInput({ channelId: "c", text: "t", mode: "custom", testMode: true })).toThrow();
+    expect(() => buildCreatePostInput({ channelId: "c", network: "x", text: "t", mode: "custom", testMode: true })).toThrow();
   });
   it("mutation requests __typename and both union members", () => {
     expect(CREATE_POST_MUTATION).toMatch(/createPost\(input: \$input\)/);
@@ -67,7 +67,7 @@ describe("parseCreatePostResponse", () => {
   });
   it("MutationError", () => {
     expect(parseCreatePostResponse({ createPost: { __typename: "MutationError", message: "Text exceeds 280 characters" } }))
-      .toEqual({ ok: false, message: "Text exceeds 280 characters" });
+      .toEqual({ ok: false, message: "Text exceeds 280 characters", typename: "MutationError" });
   });
   it("empty or unexpected shapes are failures", () => {
     expect(parseCreatePostResponse(null).ok).toBe(false);
@@ -141,9 +141,9 @@ describe("CREATE_POST_MUTATION shape (pinned to developers.buffer.com, verified 
   });
 
   it("builds only documented CreatePostInput fields with documented enum values", () => {
-    const allowed = new Set(["channelId", "text", "schedulingType", "mode", "dueAt", "saveToDraft"]);
-    const q = buildCreatePostInput({ channelId: "ch_test_1", text: "Hi", mode: "queue", testMode: false });
-    const c = buildCreatePostInput({ channelId: "ch_test_1", text: "Hi", mode: "custom", dueAtUtc: "2026-11-10T15:00:00.000Z", testMode: false });
+    const allowed = new Set(["channelId", "text", "schedulingType", "mode", "dueAt", "saveToDraft", "metadata"]);
+    const q = buildCreatePostInput({ channelId: "ch_test_1", network: "x", text: "Hi", mode: "queue", testMode: false });
+    const c = buildCreatePostInput({ channelId: "ch_test_1", network: "x", text: "Hi", mode: "custom", dueAtUtc: "2026-11-10T15:00:00.000Z", testMode: false });
     for (const i of [q, c]) {
       expect(Object.keys(i).every((k) => allowed.has(k))).toBe(true);
       expect(i.schedulingType).toBe("automatic");
@@ -153,5 +153,28 @@ describe("CREATE_POST_MUTATION shape (pinned to developers.buffer.com, verified 
     expect(q).not.toHaveProperty("dueAt");
     expect(c.mode).toBe("customScheduled");
     expect(c.dueAt).toBe("2026-11-10T15:00:00.000Z");
+  });
+});
+
+describe("per-network metadata (Buffer CreatePostInput.metadata)", () => {
+  it("Facebook always gets metadata.facebook.type = 'post' (PostTypeFacebook! is required)", () => {
+    for (const mode of ["queue", "custom"] as const) {
+      const i = buildCreatePostInput({ channelId: "ch_test_fb", network: "facebook", text: "Hi", mode, dueAtUtc: "2026-11-10T15:00:00.000Z", testMode: true });
+      expect(i.metadata).toEqual({ facebook: { type: "post" } });
+      expect(i.saveToDraft).toBe(true);
+      expect(draftSafe(i, true)).toMatchObject({ saveToDraft: true, metadata: { facebook: { type: "post" } } });
+    }
+  });
+  it("LinkedIn and X need no metadata, so none is sent", () => {
+    expect(metadataForNetwork("linkedin")).toBeUndefined();
+    expect(metadataForNetwork("x")).toBeUndefined();
+    for (const network of ["linkedin", "x"] as const) {
+      expect(buildCreatePostInput({ channelId: "c1", network, text: "Hi", mode: "queue", testMode: false })).not.toHaveProperty("metadata");
+    }
+  });
+  it("shows Buffer's own (sanitized) reason for a MutationError, with its type for logs", () => {
+    const r = parseCreatePostResponse({ createPost: { __typename: "InvalidInputError", message: "Invalid post: Facebook posts require a type (post, story, or reel)." } });
+    expect(r).toMatchObject({ ok: false, typename: "InvalidInputError" });
+    expect(sendErrorText(r).text).toBe("Buffer didn't accept the post: Invalid post: Facebook posts require a type (post, story, or reel).");
   });
 });

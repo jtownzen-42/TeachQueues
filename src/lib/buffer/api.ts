@@ -40,6 +40,18 @@ export function parseRateLimit(headers: Headers): RateLimitInfo {
   return info;
 }
 
+export type GraphQLErrorItem = { message: string; extensions?: { code?: unknown } };
+
+/** The first auth / rate-limit code in a GraphQL `errors` array, if any. */
+export function graphQLErrorCode(errors: GraphQLErrorItem[] | undefined): "UNAUTHORIZED" | "RATE_LIMIT_EXCEEDED" | null {
+  for (const e of errors ?? []) {
+    const c = typeof e?.extensions?.code === "string" ? e.extensions.code.toUpperCase() : "";
+    if (c === "UNAUTHORIZED" || c === "UNAUTHENTICATED") return "UNAUTHORIZED";
+    if (c === "RATE_LIMIT_EXCEEDED") return "RATE_LIMIT_EXCEEDED";
+  }
+  return null;
+}
+
 export let lastRateLimit: RateLimitInfo = {};
 
 export async function bufferGraphQL<T>(accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
@@ -55,7 +67,15 @@ export async function bufferGraphQL<T>(accessToken: string, query: string, varia
     throw new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit);
   }
   if (res.status === 401) throw new BufferApiError("Buffer session expired. Please reconnect.", 401);
-  const json = (await res.json().catch(() => ({}))) as { data?: T; errors?: { message: string }[] };
+  const json = (await res.json().catch(() => ({}))) as { data?: T; errors?: GraphQLErrorItem[] };
+  // Buffer reports auth and rate-limit problems as HTTP 200 with an `errors` array
+  // (https://developers.buffer.com/guides/error-handling.md), so map those codes like real 401/429s.
+  const code = graphQLErrorCode(json.errors);
+  if (code === "UNAUTHORIZED") throw new BufferApiError("Buffer session expired. Please reconnect.", 401);
+  if (code === "RATE_LIMIT_EXCEEDED") {
+    const ra = parseRetryAfter(res.headers.get("retry-after"));
+    throw new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit);
+  }
   if (!res.ok || json.errors?.length) {
     throw new BufferApiError(json.errors?.map((e) => e.message).join("; ") || `Buffer API error ${res.status}`, res.status);
   }

@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users, type BufferChannel } from "@/db/schema";
 import { getLatestLessonDraft, getLessonWithProduct, listLessonBufferPosts, parseId, requireUserId } from "@/lib/lessons/data";
-import { channelErrorText, deskNoticesFrom } from "@/lib/notices";
+import { channelErrorText, deskNoticesFrom, type Notice } from "@/lib/notices";
 import { charCount, draftAll, FORMAT_LABELS, LIMITS, NETWORK_LABELS, NETWORKS, type DraftTexts } from "@/lib/lessons/templates";
 import { getChannels } from "@/lib/buffer/sync";
 import { networkForService } from "@/lib/buffer/posts";
@@ -26,6 +26,11 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<str
 function savedTexts(per: Record<string, string> | null | undefined): DraftTexts | null {
   if (!per || !NETWORKS.every((n) => typeof per[n] === "string")) return null;
   return { x: per.x, facebook: per.facebook, linkedin: per.linkedin };
+}
+
+function serviceLabel(service: string): string {
+  const n = networkForService(service);
+  return n ? NETWORK_LABELS[n] : "Buffer";
 }
 
 /** Cached channels only (no forced Buffer request just to render the page). */
@@ -53,6 +58,16 @@ export default async function LessonPage({ params, searchParams }: Props) {
   const tz = safeTimeZone(u?.tz);
   const now = new Date();
 
+  // After a rejected send, show Buffer's own reason (already sanitized when stored) right under the
+  // notice. The text comes from this user's buffer_posts row, never from the query string.
+  const latestFailed = sp.n === "rejected"
+    ? posts.map((r) => r.post).filter((p) => !p.bufferPostId && p.lastStatus === "failed" && p.error)
+        .sort((a, b) => (b.checkedAt ?? b.createdAt).getTime() - (a.checkedAt ?? a.createdAt).getTime())[0]
+    : undefined;
+  const failureDetail: Notice | null = latestFailed?.error
+    ? { kind: "error", text: `${serviceLabel(latestFailed.service)}: ${latestFailed.error}` }
+    : null;
+
   const productFields = { name: product.name, url: product.url };
   const generated = draftAll(lesson, productFields);
   const saved = savedTexts(draft?.perChannelText);
@@ -79,6 +94,7 @@ export default async function LessonPage({ params, searchParams }: Props) {
       <h1 className="mt-2 break-words text-3xl font-bold">{lesson.term}</h1>
       <p className={`mt-1 text-sm ${muted}`}>{FORMAT_LABELS[lesson.format]} · for {product.name}</p>
       {deskNoticesFrom(sp).map((n, i) => <NoticeBox key={i} n={n} />)}
+      {failureDetail && <NoticeBox n={failureDetail} />}
 
       <section className="mt-8" aria-labelledby="drafts-heading">
         <h2 id="drafts-heading" className="mb-4 text-xl font-semibold">Drafts</h2>
