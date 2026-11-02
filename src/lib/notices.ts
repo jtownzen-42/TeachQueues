@@ -78,6 +78,17 @@ const DESK: Record<string, Notice> = {
   image_limit: { kind: "error", text: `You've saved ${IMAGE_SAVE_LIMIT_PER_DAY} images today. To keep things fair for everyone, try again tomorrow.` },
   image_failed: { kind: "error", text: "Couldn't save the image. Nothing was changed. Try again shortly." },
   image_storage_off: { kind: "error", text: "Image storage isn't set up yet, so the image wasn't saved. The preview above still works, and you can still send text-only drafts." },
+  // Marketing desk (task 04)
+  campaign_created: { kind: "info", text: "Campaign created. Template copy with tracking links is ready below." },
+  campaign_saved: { kind: "info", text: "Campaign brief saved. If the links or creative changed, review the copy and approve again." },
+  campaign_deleted: { kind: "info", text: "Campaign deleted." },
+  campaign_in_use: { kind: "error", text: "This campaign has an approved or sent version, so it can't be deleted." },
+  variants_invalid: { kind: "error", text: "Some variants need fixing before they can be saved or approved. See the notes under each one." },
+  checks_required: { kind: "error", text: "Tick both checks to approve this exact version." },
+  approval_changed: { kind: "error", text: "Something changed since this page loaded. Review the copy again, then approve." },
+  approved: { kind: "info", text: "Approved. This exact version can now be sent to Buffer as drafts." },
+  not_approved: { kind: "error", text: "Approve the exact version first. Nothing was sent." },
+  no_product: { kind: "error", text: "Pick one of your products." },
   image_unreachable: { kind: "error", text: "The saved image couldn't be reached, so nothing was sent to Buffer. Save the image again, then retry." },
 };
 

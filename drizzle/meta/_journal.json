@@ -29,6 +29,13 @@
       "when": 1793606893252,
       "tag": "0003_lesson_graphic",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793611229616,
+      "tag": "0004_marketing_desk",
+      "breakpoints": true
     }
   ]
 }

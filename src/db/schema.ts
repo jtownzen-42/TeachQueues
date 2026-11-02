@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, uuid, integer, numeric, date, jsonb, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, uuid, integer, numeric, date, jsonb, pgEnum, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 export type BufferChannel = {
   id: string; name: string; displayName?: string | null; service: string; descriptor?: string;
@@ -56,7 +56,18 @@ export const campaigns = pgTable("campaigns", {
   angle: text("angle"),
   kind: campaignKind("kind").notNull().default("organic"),
   utmCampaign: text("utm_campaign"),
-});
+  // Marketing desk brief (0004). Nullable so pre-0004 rows stay valid; zod requires them in the app.
+  goal: text("goal"),
+  keyMessage: text("key_message"),
+  cta: text("cta"),
+  /** Planning labels only: they schedule nothing. */
+  startsOn: date("starts_on"),
+  endsOn: date("ends_on"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("campaigns_user_id_idx").on(t.userId),
+]);
 
 export const drafts = pgTable("drafts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -71,6 +82,8 @@ export const drafts = pgTable("drafts", {
   imageSavedAt: timestamp("image_saved_at", { withTimezone: true }),
   status: draftStatus("status").notNull().default("draft"),
   approvedHash: text("approved_hash"),
+  /** When the exact version (approved_hash) was approved (Marketing desk, 0004). */
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

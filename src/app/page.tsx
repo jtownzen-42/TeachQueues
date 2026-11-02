@@ -88,7 +88,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         <section className="mt-8 space-y-4" aria-labelledby="channels-heading">
           <p className="break-words">Connected as <strong>{data.u.displayName || data.u.email}</strong>{data.u.orgName ? <> · organization <strong>{data.u.orgName}</strong></> : null}</p>
           <p className="text-sm">Time zone: {data.u.tz} · Test mode: <strong>{isTestMode(process.env.TEST_MODE, data.u.testMode) ? "ON (drafts only)" : "OFF"}</strong></p>
-          <p><Link href="/products" className={primary}>Open the Lesson desk</Link></p>
+          <p className="flex flex-wrap gap-3"><Link href="/products" className={primary}>Open the Lesson desk</Link><Link href="/campaigns" className={primary}>Open the Marketing desk</Link></p>
           <p className={`text-sm ${muted}`}>Add your products, write lessons, and get ready-to-post copy for X, Facebook and LinkedIn.</p>
           <h2 id="channels-heading" className="text-xl font-semibold">Your Buffer channels</h2>
           {data.channelError && <p role="alert" className="text-red-700 dark:text-red-400">{data.channelError}</p>}

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { sendToBuffer } from "@/app/lessons/actions";
 import { DUE_AT_ERROR_TEXT, dueAtPreview, resolveDueAt } from "@/lib/buffer/schedule";
@@ -20,11 +20,25 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
   );
 }
 
-export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options, imageReady = false }: {
-  lessonId: string; draftId: string; tz: string; tzLabel: string; testMode: boolean; options: SendOption[];
-  /** A saved lesson graphic matches the current lesson/product. The server re-checks and supplies the URL. */
+export function SendPanel({
+  lessonId, draftId, tz, tzLabel, testMode, options, imageReady = false,
+  action = sendToBuffer, hidden, note, imageLabel = "the lesson graphic above", subject = "lesson",
+}: {
+  /** Lesson page back-reference (default hidden field). Other desks pass `hidden` instead. */
+  lessonId?: string; draftId: string; tz: string; tzLabel: string; testMode: boolean; options: SendOption[];
+  /** A saved image matches the current version. The server re-checks and supplies the URL. */
   imageReady?: boolean;
+  /** Server Action to post to (default: the Lesson desk's sendToBuffer). */
+  action?: (fd: FormData) => Promise<void>;
+  /** Back-reference fields for the action (default: { lessonId }). */
+  hidden?: Record<string, string>;
+  /** Extra line under the drafts-only note. */
+  note?: ReactNode;
+  imageLabel?: string;
+  /** Word used in the "earlier version of this …" warning. */
+  subject?: string;
 }) {
+  const backRef = hidden ?? (lessonId ? { lessonId } : {});
   const [channelId, setChannelId] = useState(options[0]?.id ?? "");
   const [mode, setMode] = useState<"queue" | "custom">("queue");
   const [local, setLocal] = useState("");
@@ -36,13 +50,14 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options, i
   const needsConfirm = Boolean(chosen?.priorSentLabel);
 
   return (
-    <form action={sendToBuffer} className={`${card} space-y-4`}>
-      <input type="hidden" name="lessonId" value={lessonId} />
+    <form action={action} className={`${card} space-y-4`}>
+      {Object.entries(backRef).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <input type="hidden" name="draftId" value={draftId} />
       <p className="text-sm">
         {testMode ? <><strong>Test mode: ON (drafts only).</strong> </> : null}
         This always saves the post in Buffer as a <strong>draft</strong>. Nothing publishes until you schedule it in Buffer.
       </p>
+      {note ? <p className="text-sm">{note}</p> : null}
 
       <div>
         <label htmlFor="send-channel" className={label}>Buffer channel</label>
@@ -70,7 +85,7 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options, i
       {imageReady && (
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="attachImage" value="yes" defaultChecked className="mt-1" />
-          <span>Attach the saved image <span className={muted}>(the lesson graphic above)</span></span>
+          <span>Attach the saved image <span className={muted}>({imageLabel})</span></span>
         </label>
       )}
 
@@ -103,7 +118,7 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options, i
       {needsConfirm && chosen && (
         <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
           <p>
-            You already sent an earlier version of this lesson to {chosen.name} on {chosen.priorSentLabel}.
+            You already sent an earlier version of this {subject} to {chosen.name} on {chosen.priorSentLabel}.
             Sending again makes a second Buffer draft.
           </p>
           <label className="mt-2 flex items-center gap-2 font-medium">

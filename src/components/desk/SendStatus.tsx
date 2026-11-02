@@ -1,4 +1,4 @@
-// Server component: one line per draft x channel this lesson was sent to.
+// Server component: one line per draft x channel this lesson (or campaign) was sent to.
 import type { BufferChannel } from "@/db/schema";
 import type { bufferPosts } from "@/db/schema";
 import { sendToBuffer } from "@/app/lessons/actions";
@@ -9,8 +9,12 @@ import { btn, muted } from "./ui";
 
 type Row = { post: typeof bufferPosts.$inferSelect; draftId: string };
 
-export function SendStatus({ rows, channels, tz, lessonId, currentDraftId, now }: {
-  rows: Row[]; channels: BufferChannel[]; tz: string; lessonId: string; currentDraftId: string | null; now: Date;
+export function SendStatus({ rows, channels, tz, lessonId, currentDraftId, now, action = sendToBuffer, hidden }: {
+  rows: Row[]; channels: BufferChannel[]; tz: string; lessonId?: string; currentDraftId: string | null; now: Date;
+  /** Server Action for Retry (default: the Lesson desk's sendToBuffer). */
+  action?: (fd: FormData) => Promise<void>;
+  /** Back-reference fields for Retry (default: { lessonId }). */
+  hidden?: Record<string, string>;
 }) {
   if (rows.length === 0) return <p className={`text-sm ${muted}`}>Not sent to Buffer yet.</p>;
   const nameOf = (id: string) => {
@@ -47,8 +51,8 @@ export function SendStatus({ rows, channels, tz, lessonId, currentDraftId, now }
               {p.checkedAt ? ` · retried ${formatInZone(p.checkedAt.toISOString(), tz)}` : ""}
             </p>
             {state === "retry" && (
-              <form action={sendToBuffer}>
-                <input type="hidden" name="lessonId" value={lessonId} />
+              <form action={action}>
+                {Object.entries(hidden ?? (lessonId ? { lessonId } : {})).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
                 <input type="hidden" name="draftId" value={draftId} />
                 <input type="hidden" name="channelId" value={p.channelId} />
                 <input type="hidden" name="mode" value={p.dueAt ? "custom" : "queue"} />

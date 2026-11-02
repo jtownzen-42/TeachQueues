@@ -2,11 +2,11 @@ import "server-only";
 // "Send to Buffer as draft": the whole send path, with db / token getter / clock injected so it
 // runs against PGlite in tests. Order matters and every early exit happens before Buffer:
 //   validate -> ownership (draft + channel + text) -> time -> daily limit -> token -> claim -> 1 request -> persist
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import * as schema from "@/db/schema";
-import { bufferPosts, drafts, lessons, products, users } from "@/db/schema";
+import { bufferPosts, campaigns, drafts, lessons, products, users } from "@/db/schema";
 import { bufferGraphQL } from "./api";
 import {
   buildCreatePostInput, CREATE_POST_MUTATION, networkForService, parseCreatePostResponse, sendErrorText,
@@ -17,6 +17,8 @@ import { draftSafe, isTestMode } from "@/lib/testmode";
 import { charCount, LIMITS } from "@/lib/lessons/templates";
 import { cardModelHash, lessonCardModel } from "@/lib/graphics/card";
 import { currentImageUrl } from "@/lib/graphics/blob";
+import { approvalState, isApprovalCurrent } from "@/lib/campaigns/approval";
+import { campaignCreativeModel, creativeModelHash } from "@/lib/campaigns/creative";
 
 /** Max Buffer send attempts per user per rolling 24 hours. The app's Buffer quota is tiny and
  *  shared by everyone (and the judges), so this is deliberately low. */
@@ -61,9 +63,11 @@ export type SendInput = z.infer<typeof sendInput>;
 
 export type SendCode =
   | "sent" | "already_sent" | "confirm_another" | "retry_later" | "send_limit" | "not_found" | "draft_invalid" | "image_unreachable"
+  | "not_approved"
   | DueAtError | SendErrorCode;
 
-export type SendResult = { code: SendCode; lessonId?: string | null; retryAfter?: number; postId?: string };
+/** campaignId is present only for Marketing desk drafts, so lesson results keep their exact shape. */
+export type SendResult = { code: SendCode; lessonId?: string | null; campaignId?: string | null; retryAfter?: number; postId?: string };
 
 const ERROR_TO_CODE: Record<SendErrorCode, SendCode> = {
   reconnect: "reconnect", busy: "busy", rejected: "rejected", buffer_error: "buffer_error", network: "network", test_mode: "test_mode",
@@ -95,22 +99,37 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   const [draft] = await db.select({
     id: drafts.id, lessonId: drafts.lessonId, perChannelText: drafts.perChannelText, createdAt: drafts.createdAt,
     imageUrl: drafts.imageUrl, imageHash: drafts.imageHash,
+    campaignId: drafts.campaignId, status: drafts.status, approvedHash: drafts.approvedHash,
   })
     .from(drafts).where(and(eq(drafts.id, input.draftId), eq(drafts.userId, userId)));
   if (!draft) return { code: "not_found" };
   const lessonId = draft.lessonId;
+  // Lesson results stay exactly { code, lessonId, ... }; campaign drafts also carry campaignId.
+  const ref = draft.campaignId ? { lessonId, campaignId: draft.campaignId } : { lessonId };
   const channel = (u.channels ?? []).find((c) => c.id === input.channelId);
   const network = networkForService(channel?.service);
-  if (!channel || !network || channel.isDisconnected || channel.isLocked) return { code: "not_found", lessonId };
+  if (!channel || !network || channel.isDisconnected || channel.isLocked) return { code: "not_found", ...ref };
   const text = typeof draft.perChannelText?.[network] === "string" ? draft.perChannelText[network].trim() : "";
-  if (!text) return { code: "not_found", lessonId };
-  if (charCount(text, network) > LIMITS[network]) return { code: "draft_invalid", lessonId };
+  if (!text) return { code: "not_found", ...ref };
+  if (charCount(text, network) > LIMITS[network]) return { code: "draft_invalid", ...ref };
+
+  // --- Marketing desk: the campaign (and its product) must be the user's, and the exact version must
+  //     be approved. Checked before time, limits, the image HEAD, the token or any claim. ---
+  if (draft.campaignId) {
+    const [ctx] = await db.select({ campaign: campaigns, product: products }).from(campaigns)
+      .innerJoin(products, and(eq(products.id, campaigns.productId), eq(products.userId, userId)))
+      .where(and(eq(campaigns.id, draft.campaignId), eq(campaigns.userId, userId)));
+    if (!ctx) return { code: "not_found", ...ref };
+    const state = approvalState(draft, ctx.campaign, ctx.product);
+    if (state.problems[network]) return { code: "draft_invalid", ...ref };
+    if (!isApprovalCurrent(draft, state)) return { code: "not_approved", ...ref };
+  }
 
   // --- Time (server recomputes UTC from the wall-clock value; client UTC is never trusted) ---
   let dueAtUtc: string | null = null;
   if (input.mode === "custom") {
     const due = resolveDueAt(input.local, u.tz, now);
-    if (!due.ok) return { code: due.code, lessonId };
+    if (!due.ok) return { code: due.code, ...ref };
     dueAtUtc = due.utcIso;
   }
 
@@ -119,18 +138,20 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
     .where(and(eq(bufferPosts.draftId, draft.id), eq(bufferPosts.channelId, channel.id)));
   if (existing && !isRetryable(existing, now)) {
     const inFlight = existing.lastStatus === SENDING && !isStale(existing, now);
-    return { code: existing.bufferPostId || inFlight ? "already_sent" : "retry_later", lessonId };
+    return { code: existing.bufferPostId || inFlight ? "already_sent" : "retry_later", ...ref };
   }
 
   // --- Earlier version of this lesson already in Buffer on this channel? Require an explicit confirm. ---
   if (input.confirmAnother !== "yes") {
-    const prior = await priorSendsForLesson(db, userId, draft.lessonId, draft.id);
-    if (prior.some((p) => p.channelId === channel.id)) return { code: "confirm_another", lessonId };
+    const prior = draft.campaignId
+      ? await priorSendsForCampaign(db, userId, draft.campaignId, draft.id)
+      : await priorSendsForLesson(db, userId, draft.lessonId, draft.id);
+    if (prior.some((p) => p.channelId === channel.id)) return { code: "confirm_another", ...ref };
   }
 
   // --- Per-user daily limit, before any Buffer request (token refresh included) ---
   if ((await countAttempts(db, userId, new Date(now.getTime() - SEND_WINDOW_MS))) >= SEND_LIMIT_PER_DAY) {
-    return { code: "send_limit", lessonId };
+    return { code: "send_limit", ...ref };
   }
 
   // --- Image: only from the database, only if current; HEAD-checked before any claim or Buffer call ---
@@ -138,7 +159,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   if (input.attachImage === "yes") {
     imageUrl = await resolveImageUrl(db, userId, draft);
     if (imageUrl && !(await imageReachable(deps.fetch ?? fetch, imageUrl))) {
-      return { code: "image_unreachable", lessonId };
+      return { code: "image_unreachable", ...ref };
     }
   }
 
@@ -149,7 +170,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   } catch (e) {
     const m = sendErrorText(e);
     if (m.code !== "reconnect") console.error("[teachqueue] send: token failed", (e as Error)?.name);
-    return { code: m.code === "reconnect" ? "reconnect" : "network", lessonId };
+    return { code: m.code === "reconnect" ? "reconnect" : "network", ...ref };
   }
 
   // --- Claim the draft x channel slot atomically: at most one in-flight request ever. ---
@@ -157,7 +178,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   if (!claimedId) {
     const [row] = await db.select().from(bufferPosts)
       .where(and(eq(bufferPosts.draftId, draft.id), eq(bufferPosts.channelId, channel.id)));
-    return { code: row && !row.bufferPostId && row.lastStatus === FAILED ? "retry_later" : "already_sent", lessonId };
+    return { code: row && !row.bufferPostId && row.lastStatus === FAILED ? "retry_later" : "already_sent", ...ref };
   }
 
   // --- Exactly one Buffer request ---
@@ -171,7 +192,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
     const m = sendErrorText(e);
     console.error("[teachqueue] send: Buffer request failed", (e as { name?: string })?.name, (e as { status?: number })?.status ?? "");
     await markFailed(db, claimedId, m.text);
-    return { code: ERROR_TO_CODE[m.code], lessonId, retryAfter: m.retryAfter };
+    return { code: ERROR_TO_CODE[m.code], ...ref, retryAfter: m.retryAfter };
   }
 
   if (!result.ok) {
@@ -179,7 +200,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
     console.error("[teachqueue] send: Buffer rejected the post", result.typename ?? "MutationError");
     const m = sendErrorText(result);
     await markFailed(db, claimedId, m.text);
-    return { code: "rejected", lessonId };
+    return { code: "rejected", ...ref };
   }
 
   await db.update(bufferPosts).set({
@@ -191,9 +212,10 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   }).where(eq(bufferPosts.id, claimedId));
   // The draft now has Buffer history: mark it queued so it can't be deleted or silently edited
   // (editing creates a new draft version; see the Lesson desk).
+  // Campaign drafts move approved -> queued and keep approved_hash as the record of what was sent.
   await db.update(drafts).set({ status: "queued" })
-    .where(and(eq(drafts.id, draft.id), eq(drafts.userId, userId), eq(drafts.status, "draft")));
-  return { code: "sent", lessonId, postId: result.postId };
+    .where(and(eq(drafts.id, draft.id), eq(drafts.userId, userId), inArray(drafts.status, ["draft", "approved"])));
+  return { code: "sent", ...ref, postId: result.postId };
 }
 
 type PostRow = typeof bufferPosts.$inferSelect;
@@ -263,8 +285,9 @@ async function markFailed(db: SendDb, id: string, text: string) {
 /** The draft's saved image URL if it was rendered from the lesson/product as they are now and is
  *  a valid public Blob URL; otherwise null (a stale or missing image is simply not attached). */
 export async function resolveImageUrl(
-  db: SendDb, userId: string, draft: { lessonId: string | null; imageUrl: string | null; imageHash: string | null },
+  db: SendDb, userId: string, draft: { lessonId: string | null; campaignId?: string | null; imageUrl: string | null; imageHash: string | null },
 ): Promise<string | null> {
+  if (draft.campaignId) return resolveCampaignImageUrl(db, userId, { ...draft, campaignId: draft.campaignId });
   if (!draft.lessonId || !draft.imageUrl || !draft.imageHash) return null;
   const [row] = await db.select({ lesson: lessons, product: products }).from(lessons)
     .innerJoin(products, eq(products.id, lessons.productId))
@@ -282,4 +305,29 @@ export async function imageReachable(fetchImpl: typeof fetch, url: string): Prom
     console.error("[teachqueue] send: image HEAD failed", (e as Error)?.name);
     return false;
   }
+}
+
+/** Campaign drafts: the saved square image, only if it is the current creative and a valid Blob URL.
+ *  (The approval gate has already required that this image is the one that was approved.) */
+async function resolveCampaignImageUrl(
+  db: SendDb, userId: string, draft: { campaignId: string; imageUrl: string | null; imageHash: string | null },
+): Promise<string | null> {
+  if (!draft.imageUrl || !draft.imageHash) return null;
+  const [row] = await db.select({ campaign: campaigns, product: products }).from(campaigns)
+    .innerJoin(products, and(eq(products.id, campaigns.productId), eq(products.userId, userId)))
+    .where(and(eq(campaigns.id, draft.campaignId), eq(campaigns.userId, userId)));
+  if (!row) return null;
+  return currentImageUrl(draft, creativeModelHash(campaignCreativeModel(row)));
+}
+
+/** Successful Buffer sends (a Buffer post id exists) of OTHER draft versions of the same campaign,
+ *  scoped to the user, newest first. Used for the "Yes, send another copy" confirm. */
+export async function priorSendsForCampaign(db: SendDb, userId: string, campaignId: string, currentDraftId: string) {
+  return db.select({ channelId: bufferPosts.channelId, sentAt: sql<Date>`coalesce(${bufferPosts.checkedAt}, ${bufferPosts.createdAt})`.mapWith(bufferPosts.createdAt) })
+    .from(bufferPosts).innerJoin(drafts, eq(drafts.id, bufferPosts.draftId))
+    .where(and(
+      eq(drafts.userId, userId), eq(drafts.campaignId, campaignId),
+      sql`${drafts.id} <> ${currentDraftId}`, sql`${bufferPosts.bufferPostId} is not null`,
+    ))
+    .orderBy(sql`coalesce(${bufferPosts.checkedAt}, ${bufferPosts.createdAt}) desc`);
 }
