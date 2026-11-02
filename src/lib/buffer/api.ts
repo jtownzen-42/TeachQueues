@@ -1,4 +1,5 @@
 import "server-only";
+import { parseRateLimitWindows, type RateLimitWindow } from "./ratelimit";
 
 export const BUFFER_API_URL = "https://api.buffer.com";
 
@@ -9,6 +10,8 @@ export class BufferApiError extends Error {
     super(message);
   }
   name = "BufferApiError";
+  /** Parsed per-window rate-limit headers (set on 429s by bufferGraphQLWithMeta). */
+  windows?: RateLimitWindow[];
 }
 
 /** Retry-After is seconds or an HTTP date; fall back to 60s when unparseable. */
@@ -54,7 +57,9 @@ export function graphQLErrorCode(errors: GraphQLErrorItem[] | undefined): "UNAUT
 
 export let lastRateLimit: RateLimitInfo = {};
 
-export async function bufferGraphQL<T>(accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+/** Same request and error mapping as bufferGraphQL, plus the response's per-window rate-limit
+ *  headers (also attached to a thrown 429 as `windows`). bufferGraphQL delegates to this. */
+export async function bufferGraphQLWithMeta<T>(accessToken: string, query: string, variables?: Record<string, unknown>): Promise<{ data: T; windows: RateLimitWindow[] }> {
   const res = await fetch(BUFFER_API_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -62,9 +67,11 @@ export async function bufferGraphQL<T>(accessToken: string, query: string, varia
     cache: "no-store",
   });
   lastRateLimit = parseRateLimit(res.headers);
+  const windows = parseRateLimitWindows(res.headers);
+  const busy = (ra: number) => Object.assign(new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit), { windows });
   if (res.status === 429) {
     const ra = parseRetryAfter(res.headers.get("retry-after"));
-    throw new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit);
+    throw busy(ra);
   }
   if (res.status === 401) throw new BufferApiError("Buffer session expired. Please reconnect.", 401);
   const json = (await res.json().catch(() => ({}))) as { data?: T; errors?: GraphQLErrorItem[] };
@@ -74,12 +81,16 @@ export async function bufferGraphQL<T>(accessToken: string, query: string, varia
   if (code === "UNAUTHORIZED") throw new BufferApiError("Buffer session expired. Please reconnect.", 401);
   if (code === "RATE_LIMIT_EXCEEDED") {
     const ra = parseRetryAfter(res.headers.get("retry-after"));
-    throw new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit);
+    throw busy(ra);
   }
   if (!res.ok || json.errors?.length) {
     throw new BufferApiError(json.errors?.map((e) => e.message).join("; ") || `Buffer API error ${res.status}`, res.status);
   }
-  return json.data as T;
+  return { data: json.data as T, windows };
+}
+
+export async function bufferGraphQL<T>(accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+  return (await bufferGraphQLWithMeta<T>(accessToken, query, variables)).data;
 }
 
 export const ACCOUNT_QUERY = /* GraphQL */ `

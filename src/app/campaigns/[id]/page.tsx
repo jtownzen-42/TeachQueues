@@ -116,6 +116,7 @@ export default async function CampaignPage({ params, searchParams }: Props) {
       <p className={`mt-1 break-words text-sm ${muted}`}>
         For {product ? product.name : "no product"}{campaign.goal ? ` · Goal: ${campaign.goal}` : ""}
       </p>
+      <p className="mt-2 text-sm"><Link href={`/campaigns/${campaign.id}/results`} className={linkCls}>Results</Link></p>
       {deskNoticesFrom(sp).map((n, i) => <NoticeBox key={i} n={n} />)}
       {failureDetail && <NoticeBox n={failureDetail} />}
 

@@ -44,7 +44,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
                 <li key={c.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 p-3">
                   <Link href={`/campaigns/${c.id}`} className={`min-w-0 break-words font-medium ${linkCls}`}>{c.name}</Link>
                   <span className="text-sm font-medium">{status}</span>
-                  <span className={`w-full break-words text-sm ${muted}`}>{productName ?? "No product"}{d ? ` · ${d}` : ""}</span>
+                  <span className={`w-full break-words text-sm ${muted}`}>{productName ?? "No product"}{d ? ` · ${d}` : ""} · <Link href={`/campaigns/${c.id}/results`} className={linkCls}>Results<span className="sr-only"> for {c.name}</span></Link></span>
                 </li>
               );
             })}

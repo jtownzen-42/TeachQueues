@@ -28,6 +28,9 @@ export const users = pgTable("users", {
   channelsSyncedAt: timestamp("channels_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Calendar read-back (0005): last successful read, and last attempt (drives the 60 s cooldown).
+  postsReadAt: timestamp("posts_read_at", { withTimezone: true }),
+  postsReadAttemptAt: timestamp("posts_read_attempt_at", { withTimezone: true }),
 });
 
 export const products = pgTable("products", {
@@ -101,6 +104,12 @@ export const bufferPosts = pgTable("buffer_posts", {
   error: text("error"),
   checkedAt: timestamp("checked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Calendar read-back cache (0005). Written only by the read-back; never touches the send claim
+  // columns (checked_at, created_at, last_status, error, buffer_post_id).
+  bufferStatus: text("buffer_status"),
+  bufferError: text("buffer_error"),
+  bufferSyncedAt: timestamp("buffer_synced_at", { withTimezone: true }),
+  bufferMissingAt: timestamp("buffer_missing_at", { withTimezone: true }),
 }, (t) => [
   // One row per draft x channel: the idempotency claim for "Send to Buffer".
   uniqueIndex("buffer_posts_draft_channel_uq").on(t.draftId, t.channelId),
@@ -116,4 +125,20 @@ export const results = pgTable("results", {
   fees: numeric("fees", { precision: 10, scale: 2 }).notNull().default("0"),
   refunds: numeric("refunds", { precision: 10, scale: 2 }).notNull().default("0"),
   adSpend: numeric("ad_spend", { precision: 10, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // One row per campaign per day: "save the same day again" is an upsert.
+  uniqueIndex("results_campaign_day_uq").on(t.campaignId, t.day),
+]);
+
+/** Buffer's app-wide rate-limit windows (shared by every user; holds no user data).
+ *  window_seconds 0 is the "busy after a 429" marker (no quota). */
+export const bufferRateLimits = pgTable("buffer_rate_limits", {
+  windowSeconds: integer("window_seconds").primaryKey(),
+  quota: integer("quota"),
+  remaining: integer("remaining"),
+  resetAt: timestamp("reset_at", { withTimezone: true }),
+  busyUntil: timestamp("busy_until", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

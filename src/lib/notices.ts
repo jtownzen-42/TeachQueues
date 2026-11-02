@@ -89,6 +89,16 @@ const DESK: Record<string, Notice> = {
   approved: { kind: "info", text: "Approved. This exact version can now be sent to Buffer as drafts." },
   not_approved: { kind: "error", text: "Approve the exact version first. Nothing was sent." },
   no_product: { kind: "error", text: "Pick one of your products." },
+  // Calendar read-back + Results (task 05)
+  read_ok: { kind: "info", text: "Statuses updated from Buffer." },
+  read_partial: { kind: "info", text: "Statuses updated from Buffer for most posts. Some weren't read this time; they'll be checked on the next refresh." },
+  nothing_to_read: { kind: "info", text: "Nothing to read from Buffer yet. Send a draft to Buffer first." },
+  refresh_cooldown: { kind: "info", text: "Statuses were read less than a minute ago. Try again in a minute." },
+  quota_low: { kind: "error", text: "Buffer's shared request budget is running low, so live refresh is paused for now. Your saved statuses are shown." },
+  read_failed: { kind: "error", text: "Couldn't read statuses from Buffer. Your saved statuses are shown." },
+  result_saved: { kind: "info", text: "Day saved." },
+  result_deleted: { kind: "info", text: "Day deleted." },
+  result_invalid: { kind: "error", text: "Some numbers need fixing. See the notes in the form." },
   image_unreachable: { kind: "error", text: "The saved image couldn't be reached, so nothing was sent to Buffer. Save the image again, then retry." },
 };
 
