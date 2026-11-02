@@ -65,6 +65,10 @@ export const drafts = pgTable("drafts", {
   campaignId: uuid("campaign_id").references(() => campaigns.id),
   perChannelText: jsonb("per_channel_text").$type<Record<string, string>>().notNull().default({}),
   imageUrl: text("image_url"),
+  /** cardModelHash() of the model the saved PNG was rendered from (stale when it no longer matches). */
+  imageHash: text("image_hash"),
+  /** When the image was last saved; also drives the per-user daily image-save limit. */
+  imageSavedAt: timestamp("image_saved_at", { withTimezone: true }),
   status: draftStatus("status").notNull().default("draft"),
   approvedHash: text("approved_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

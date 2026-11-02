@@ -6,7 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import * as schema from "@/db/schema";
-import { bufferPosts, drafts, users } from "@/db/schema";
+import { bufferPosts, drafts, lessons, products, users } from "@/db/schema";
 import { bufferGraphQL } from "./api";
 import {
   buildCreatePostInput, CREATE_POST_MUTATION, networkForService, parseCreatePostResponse, sendErrorText,
@@ -15,6 +15,8 @@ import {
 import { resolveDueAt, type DueAtError } from "./schedule";
 import { draftSafe, isTestMode } from "@/lib/testmode";
 import { charCount, LIMITS } from "@/lib/lessons/templates";
+import { cardModelHash, lessonCardModel } from "@/lib/graphics/card";
+import { currentImageUrl } from "@/lib/graphics/blob";
 
 /** Max Buffer send attempts per user per rolling 24 hours. The app's Buffer quota is tiny and
  *  shared by everyone (and the judges), so this is deliberately low. */
@@ -35,7 +37,12 @@ export type SendDeps = {
   now: () => Date;
   /** process.env.TEST_MODE (default ON). */
   envTestMode: string | undefined;
+  /** Used only for the image HEAD check (defaults to global fetch; Buffer calls go through bufferGraphQL). */
+  fetch?: typeof fetch;
 };
+
+/** How long the image HEAD check may take before the send is refused as image_unreachable. */
+export const IMAGE_HEAD_TIMEOUT_MS = 8_000;
 
 /** Unknown keys (e.g. a forged saveToDraft=false field) are stripped by zod and never read. */
 export const sendInput = z.object({
@@ -46,11 +53,14 @@ export const sendInput = z.object({
   /** "Yes, send another copy" checkbox. Required (value "yes") when an earlier version of the
    *  same lesson already reached Buffer on this channel; anything else counts as unchecked. */
   confirmAnother: z.string().trim().max(8).optional().nullable(),
+  /** "Attach the saved image" checkbox: only the literal "yes" counts. The URL itself is never
+   *  read from the request; it comes from drafts.image_url (see resolveImageUrl). */
+  attachImage: z.string().trim().max(8).optional().nullable(),
 }).refine((v) => v.mode === "queue" || Boolean(v.local), { path: ["local"], message: "Pick a date and time." });
 export type SendInput = z.infer<typeof sendInput>;
 
 export type SendCode =
-  | "sent" | "already_sent" | "confirm_another" | "retry_later" | "send_limit" | "not_found" | "draft_invalid"
+  | "sent" | "already_sent" | "confirm_another" | "retry_later" | "send_limit" | "not_found" | "draft_invalid" | "image_unreachable"
   | DueAtError | SendErrorCode;
 
 export type SendResult = { code: SendCode; lessonId?: string | null; retryAfter?: number; postId?: string };
@@ -82,7 +92,10 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   const [u] = await db.select({ tz: users.tz, testMode: users.testMode, channels: users.channelsCache })
     .from(users).where(eq(users.id, userId));
   if (!u) return { code: "not_found" };
-  const [draft] = await db.select({ id: drafts.id, lessonId: drafts.lessonId, perChannelText: drafts.perChannelText, createdAt: drafts.createdAt })
+  const [draft] = await db.select({
+    id: drafts.id, lessonId: drafts.lessonId, perChannelText: drafts.perChannelText, createdAt: drafts.createdAt,
+    imageUrl: drafts.imageUrl, imageHash: drafts.imageHash,
+  })
     .from(drafts).where(and(eq(drafts.id, input.draftId), eq(drafts.userId, userId)));
   if (!draft) return { code: "not_found" };
   const lessonId = draft.lessonId;
@@ -120,6 +133,15 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
     return { code: "send_limit", lessonId };
   }
 
+  // --- Image: only from the database, only if current; HEAD-checked before any claim or Buffer call ---
+  let imageUrl: string | null = null;
+  if (input.attachImage === "yes") {
+    imageUrl = await resolveImageUrl(db, userId, draft);
+    if (imageUrl && !(await imageReachable(deps.fetch ?? fetch, imageUrl))) {
+      return { code: "image_unreachable", lessonId };
+    }
+  }
+
   // --- Token (may refresh under its own row lock). No claim yet, so nothing to undo. ---
   let token: string;
   try {
@@ -142,7 +164,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   const testMode = isTestMode(deps.envTestMode, u.testMode);
   let result: CreatePostResult;
   try {
-    const payload = draftSafe(buildCreatePostInput({ channelId: channel.id, network, text, mode: input.mode, dueAtUtc, testMode }), testMode);
+    const payload = draftSafe(buildCreatePostInput({ channelId: channel.id, network, text, mode: input.mode, dueAtUtc, testMode, imageUrl }), testMode);
     if (payload.saveToDraft !== true) throw Object.assign(new Error("not a draft"), { name: "TestModeViolation" }); // belt and braces
     result = parseCreatePostResponse(await bufferGraphQL<unknown>(token, CREATE_POST_MUTATION, { input: payload }));
   } catch (e) {
@@ -236,4 +258,28 @@ async function claim(db: SendDb, o: { draftId: string; channelId: string; servic
 
 async function markFailed(db: SendDb, id: string, text: string) {
   await db.update(bufferPosts).set({ lastStatus: FAILED, error: text, bufferPostId: null }).where(eq(bufferPosts.id, id));
+}
+
+/** The draft's saved image URL if it was rendered from the lesson/product as they are now and is
+ *  a valid public Blob URL; otherwise null (a stale or missing image is simply not attached). */
+export async function resolveImageUrl(
+  db: SendDb, userId: string, draft: { lessonId: string | null; imageUrl: string | null; imageHash: string | null },
+): Promise<string | null> {
+  if (!draft.lessonId || !draft.imageUrl || !draft.imageHash) return null;
+  const [row] = await db.select({ lesson: lessons, product: products }).from(lessons)
+    .innerJoin(products, eq(products.id, lessons.productId))
+    .where(and(eq(lessons.id, draft.lessonId), eq(products.userId, userId)));
+  if (!row) return null;
+  return currentImageUrl(draft, cardModelHash(lessonCardModel(row)));
+}
+
+/** One HEAD request: 200 with an image/* content type, no redirects, bounded time. */
+export async function imageReachable(fetchImpl: typeof fetch, url: string): Promise<boolean> {
+  try {
+    const res = await fetchImpl(url, { method: "HEAD", redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(IMAGE_HEAD_TIMEOUT_MS) });
+    return res.status === 200 && (res.headers.get("content-type") ?? "").toLowerCase().startsWith("image/");
+  } catch (e) {
+    console.error("[teachqueue] send: image HEAD failed", (e as Error)?.name);
+    return false;
+  }
 }

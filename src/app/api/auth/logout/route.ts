@@ -4,6 +4,8 @@ import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { getAppSession } from "@/lib/session";
 import { homeUrl, isSameOrigin } from "@/lib/http";
+import { del as deleteBlobs } from "@vercel/blob";
+import { deleteUserImages } from "@/lib/graphics/cleanup";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,7 @@ export async function POST(req: NextRequest) {
   if (userId) {
     const db = getDb();
     if (del) {
+      await deleteUserImages(db, userId, (urls) => deleteBlobs(urls)); // best effort; never blocks the delete
       await db.delete(users).where(eq(users.id, userId)); // cascades to products, lessons, drafts...
     } else {
       await db.update(users).set({

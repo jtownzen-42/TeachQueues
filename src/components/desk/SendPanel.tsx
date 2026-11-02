@@ -20,8 +20,10 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
   );
 }
 
-export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options }: {
+export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options, imageReady = false }: {
   lessonId: string; draftId: string; tz: string; tzLabel: string; testMode: boolean; options: SendOption[];
+  /** A saved lesson graphic matches the current lesson/product. The server re-checks and supplies the URL. */
+  imageReady?: boolean;
 }) {
   const [channelId, setChannelId] = useState(options[0]?.id ?? "");
   const [mode, setMode] = useState<"queue" | "custom">("queue");
@@ -63,6 +65,13 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options }:
           </pre>
           <p className={`mt-1 text-xs ${muted}`}>To change it, edit the draft above and save it first.</p>
         </div>
+      )}
+
+      {imageReady && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="attachImage" value="yes" defaultChecked className="mt-1" />
+          <span>Attach the saved image <span className={muted}>(the lesson graphic above)</span></span>
+        </label>
       )}
 
       <fieldset>

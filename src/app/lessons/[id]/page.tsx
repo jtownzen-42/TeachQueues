@@ -15,6 +15,9 @@ import { DraftEditor } from "@/components/desk/DraftEditor";
 import { LessonForm } from "@/components/desk/LessonForm";
 import { SendPanel, type SendOption } from "@/components/desk/SendPanel";
 import { SendStatus } from "@/components/desk/SendStatus";
+import { LessonGraphic, type SavedImageState } from "@/components/desk/LessonGraphic";
+import { cardAltText, cardModelHash, lessonCardModel } from "@/lib/graphics/card";
+import { currentImageUrl } from "@/lib/graphics/blob";
 import { card, Crumbs, DeleteDetails, muted, NoticeBox } from "@/components/desk/ui";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +78,14 @@ export default async function LessonPage({ params, searchParams }: Props) {
   const created = draft ? new Intl.DateTimeFormat("en-US", { timeZone: tz, dateStyle: "medium", timeStyle: "short" }).format(draft.createdAt) : "";
   const savedLabel = draft ? (sentVersion ? `sent version, created ${created}; saving changes makes a new version` : `created ${created}`) : null;
 
+  // Lesson graphic: the hash of what is drawn now decides whether a saved image is current.
+  const cardModel = lessonCardModel({ lesson, product });
+  const cardHash = cardModelHash(cardModel);
+  const imageUrl = draft ? currentImageUrl(draft, cardHash) : null;
+  const savedImage: SavedImageState = imageUrl && draft?.imageSavedAt
+    ? { kind: "current", url: imageUrl, savedLabel: formatInZone(draft.imageSavedAt.toISOString(), tz) }
+    : draft?.imageUrl ? { kind: "stale" } : { kind: "none" };
+
   // Send panel: only for a complete saved draft, and only channels we draft for.
   const { channels, error: channelError } = saved && u?.hasToken ? await loadChannels(userId) : { channels: [] as BufferChannel[], error: null };
   // Earlier versions of this lesson that already reached Buffer, newest per channel (server re-checks).
@@ -117,6 +128,11 @@ export default async function LessonPage({ params, searchParams }: Props) {
         />
       </section>
 
+      <section id="graphic" className="mt-10 scroll-mt-4" aria-labelledby="graphic-heading">
+        <h2 id="graphic-heading" className="mb-4 text-xl font-semibold">Lesson graphic</h2>
+        <LessonGraphic lessonId={lesson.id} draftId={draft?.id ?? null} hash={cardHash} alt={cardAltText(cardModel)} saved={savedImage} />
+      </section>
+
       <section id="send" className="mt-10 scroll-mt-4" aria-labelledby="send-heading">
         <h2 id="send-heading" className="mb-4 text-xl font-semibold">Send to Buffer</h2>
         {!draft || !saved ? (
@@ -131,7 +147,7 @@ export default async function LessonPage({ params, searchParams }: Props) {
             ) : (
               <SendPanel
                 lessonId={lesson.id} draftId={draft.id} tz={tz} tzLabel={tz.replace(/_/g, " ")}
-                testMode={isTestMode(process.env.TEST_MODE, u.testMode)} options={options}
+                testMode={isTestMode(process.env.TEST_MODE, u.testMode)} options={options} imageReady={Boolean(imageUrl)}
               />
             )}
           </>

@@ -1,5 +1,6 @@
 import { SEND_ERROR_TEXT } from "./buffer/posts";
 import { DUE_AT_ERROR_TEXT } from "./buffer/schedule";
+import { IMAGE_SAVE_LIMIT_PER_DAY } from "./graphics/limits";
 
 // Fixed, human-readable banners for the home page. Only known codes are shown, so
 // query strings can't put arbitrary text on the page.
@@ -72,6 +73,12 @@ const DESK: Record<string, Notice> = {
   time_gap: { kind: "error", text: DUE_AT_ERROR_TEXT.time_gap },
   time_past: { kind: "error", text: DUE_AT_ERROR_TEXT.time_past },
   time_far: { kind: "error", text: DUE_AT_ERROR_TEXT.time_far },
+  // Lesson graphic (task 03)
+  image_saved: { kind: "info", text: "Image saved. It will be attached when you send with \u201cAttach the saved image\u201d ticked." },
+  image_limit: { kind: "error", text: `You've saved ${IMAGE_SAVE_LIMIT_PER_DAY} images today. To keep things fair for everyone, try again tomorrow.` },
+  image_failed: { kind: "error", text: "Couldn't save the image. Nothing was changed. Try again shortly." },
+  image_storage_off: { kind: "error", text: "Image storage isn't set up yet, so the image wasn't saved. The preview above still works, and you can still send text-only drafts." },
+  image_unreachable: { kind: "error", text: "The saved image couldn't be reached, so nothing was sent to Buffer. Save the image again, then retry." },
 };
 
 export function deskNoticesFrom(sp: Record<string, string | string[] | undefined>): Notice[] {

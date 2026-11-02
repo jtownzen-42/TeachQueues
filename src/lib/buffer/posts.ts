@@ -41,7 +41,30 @@ export type CreatePostInput = {
   dueAt?: string;
   saveToDraft: true;
   metadata?: CreatePostMetadata;
+  assets?: CreatePostAsset[];
 };
+
+// VERIFY AGAINST LIVE BUFFER SCHEMA — Martha verifies against the live API before enabling.
+// Image attachment (task 03):
+//   CreatePostInput.assets: [AssetInput!]! (default: []); AssetInput = exactly one of image | video | document
+//   (link is deprecated, removed Dec 15 2026):
+//     https://developers.buffer.com/types/CreatePostInput.html , https://developers.buffer.com/reference.md (AssetInput)
+//   ImageAssetInput { url: String!, thumbnailUrl: String, metadata: ImageMetadataInput }:
+//     https://developers.buffer.com/reference.md (ImageAssetInput)
+//   Example: assets: [{ image: { url: "https://…" } }]: https://developers.buffer.com/examples/create-image-post.md
+//   The URL must be public, direct, HTTPS and stable until the post publishes (no signed/expiring URLs;
+//   there is no upload endpoint): https://developers.buffer.com/guides/hosting-media.md
+//   metadata.{service}.linkAttachment is mutually exclusive with a non-empty assets array, so we never send
+//   linkAttachment: https://developers.buffer.com/types/CreatePostInput.html
+// Only `url` is sent. The asset selection on PostActionSuccess is left unchanged (not parsed).
+// Verified 2026-11-02 against the live docs (all four pages fetched that day):
+//   - https://developers.buffer.com/types/CreatePostInput.html : assets: [AssetInput!]!, linkAttachment vs assets note
+//   - https://developers.buffer.com/reference.md : AssetInput (exactly one variant: image | video | document; link
+//     deprecated, removed Dec 15 2026), ImageAssetInput { url: String!, thumbnailUrl: String, metadata: ImageMetadataInput }
+//   - https://developers.buffer.com/examples/create-image-post.md : assets: [{ image: { url: "https://..." } }]
+//   - https://developers.buffer.com/guides/hosting-media.md : public, direct (no redirect), HTTPS, stable URL
+//   Shape locked by tests/buffer-posts-assets.test.ts.
+export type CreatePostAsset = { image: { url: string } };
 
 /** CreatePostInput.metadata (PostInputMetaData). Only what our networks need:
  *  - Facebook: FacebookPostMetadataInput.type is REQUIRED (PostTypeFacebook! = post | reel | story).
@@ -67,6 +90,8 @@ export function metadataForNetwork(network: Network): CreatePostMetadata | undef
  *  Only the listed fields are copied: nothing from a form can reach the payload. */
 export function buildCreatePostInput(opts: {
   channelId: string; network: Network; text: string; mode: SendMode; dueAtUtc?: string | null; testMode: boolean;
+  /** A validated, current public Blob URL from the database (never from a form). */
+  imageUrl?: string | null;
 }): CreatePostInput {
   const input: CreatePostInput = {
     channelId: opts.channelId,
@@ -81,6 +106,9 @@ export function buildCreatePostInput(opts: {
   }
   const metadata = metadataForNetwork(opts.network);
   if (metadata) input.metadata = metadata;
+  // VERIFY AGAINST LIVE BUFFER SCHEMA — Martha verifies against the live API before enabling.
+  // No image -> no assets key at all, so text-only posts are byte-identical to task 02.
+  if (opts.imageUrl) input.assets = [{ image: { url: opts.imageUrl } }];
   return input;
 }
 
