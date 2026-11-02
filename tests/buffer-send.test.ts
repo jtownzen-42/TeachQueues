@@ -231,7 +231,7 @@ describe("daily limit", () => {
     const [l] = await db.select().from(s.lessons).limit(1).innerJoin(s.drafts, eq(s.drafts.lessonId, s.lessons.id)).where(eq(s.drafts.userId, A.userId));
     for (let i = 0; i < n; i++) {
       const [d] = await db.insert(s.drafts).values({ userId: A.userId, lessonId: l.lessons.id, perChannelText: {} }).returning();
-      await db.insert(s.bufferPosts).values({ draftId: d.id, channelId: "ch_test_li", service: "linkedin", bufferPostId: `post_FAKE_old_${i}`, createdAt: at });
+      await db.insert(s.bufferPosts).values({ draftId: d.id, channelId: "ch_old_seed", service: "linkedin", bufferPostId: `post_FAKE_old_${i}`, createdAt: at });
     }
   }
 
@@ -304,5 +304,48 @@ describe("Facebook metadata + Buffer errors (prod regression 2026-11-01)", () =>
     respond = () => json({ data: null, errors: [{ message: "Too many requests", extensions: { code: "RATE_LIMIT_EXCEEDED" } }] }, 200, { "retry-after": "120" });
     const r = await send(A.userId, { draftId: A.draftId, channelId: "ch_test_li", mode: "queue" });
     expect(r).toMatchObject({ code: "busy", retryAfter: 120 });
+  });
+});
+
+describe("second copy of an edited lesson (earlier version already in Buffer)", () => {
+  async function newVersion() {
+    const [d] = await db.insert(s.drafts).values({
+      userId: A.userId, lessonId: A.lessonId,
+      perChannelText: { x: "X v2", facebook: "FB text v2", linkedin: "LI text v2" },
+    }).returning();
+    return d.id;
+  }
+
+  it("refuses without the confirm box (no Buffer call), sends with confirmAnother=yes", async () => {
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_fb", mode: "queue" })).code).toBe("sent");
+    const v2 = await newVersion();
+    expect((await send(A.userId, { draftId: v2, channelId: "ch_test_fb", mode: "queue" })).code).toBe("confirm_another");
+    expect((await send(A.userId, { draftId: v2, channelId: "ch_test_fb", mode: "queue", confirmAnother: "on" })).code).toBe("confirm_another");
+    expect((await send(A.userId, { draftId: v2, channelId: "ch_test_fb", mode: "queue", confirmAnother: "" })).code).toBe("confirm_another");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await rowsFor(v2)).toHaveLength(0);
+    const r = await send(A.userId, { draftId: v2, channelId: "ch_test_fb", mode: "queue", confirmAnother: "yes" });
+    expect(r.code).toBe("sent");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const body = sentBodies()[1].variables.input;
+    expect(body).toMatchObject({ text: "FB text v2", saveToDraft: true, metadata: { facebook: { type: "post" } } });
+    expect(body).not.toHaveProperty("confirmAnother");
+  });
+
+  it("only counts successful earlier sends to the SAME channel", async () => {
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_fb", mode: "queue" })).code).toBe("sent");
+    respond = () => json({ data: { createPost: { __typename: "InvalidInputError", message: "nope" } } });
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_li", mode: "queue" })).code).toBe("rejected");
+    respond = () => json(okBody("post_FAKE_9"));
+    const v2 = await newVersion();
+    // LinkedIn: earlier attempt failed (no Buffer post id) -> no confirm needed
+    expect((await send(A.userId, { draftId: v2, channelId: "ch_test_li", mode: "queue" })).code).toBe("sent");
+    // X: never sent -> no confirm needed
+    expect((await send(A.userId, { draftId: v2, channelId: "ch_test_x", mode: "queue" })).code).toBe("sent");
+  });
+
+  it("another user's sends never trigger the guard", async () => {
+    expect((await send(B.userId, { draftId: B.draftId, channelId: "ch_test_b", mode: "queue" })).code).toBe("sent");
+    expect((await send(A.userId, { draftId: A.draftId, channelId: "ch_test_li", mode: "queue" })).code).toBe("sent");
   });
 });

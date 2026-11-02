@@ -58,6 +58,7 @@ const DESK: Record<string, Notice> = {
   // Send to Buffer (task 02)
   sent: { kind: "info", text: "Sent to Buffer as a draft. It won't publish until you schedule it in Buffer." },
   already_sent: { kind: "info", text: "This draft was already sent to that channel, so nothing new was sent." },
+  confirm_another: { kind: "error", text: "An earlier version of this lesson is already in Buffer on that channel. Nothing was sent. To make a second Buffer draft, tick \u201cYes, send another copy\u201d and send again." },
   retry_later: { kind: "error", text: "That send already failed and was retried in the last 24 hours. To keep the shared Buffer quota fair, you can retry it again tomorrow." },
   send_limit: { kind: "error", text: "You've sent 20 posts to Buffer today. To keep the shared Buffer quota fair for everyone, try again tomorrow." },
   busy: { kind: "error", text: "Buffer is busy right now. Nothing was posted. Try again in a few minutes." },

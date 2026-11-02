@@ -9,7 +9,7 @@ import { charCount, draftAll, FORMAT_LABELS, LIMITS, NETWORK_LABELS, NETWORKS, t
 import { getChannels } from "@/lib/buffer/sync";
 import { networkForService } from "@/lib/buffer/posts";
 import { isTestMode } from "@/lib/testmode";
-import { safeTimeZone } from "@/lib/tz";
+import { formatInZone, safeTimeZone } from "@/lib/tz";
 import { deleteLesson } from "@/app/products/actions";
 import { DraftEditor } from "@/components/desk/DraftEditor";
 import { LessonForm } from "@/components/desk/LessonForm";
@@ -77,11 +77,23 @@ export default async function LessonPage({ params, searchParams }: Props) {
 
   // Send panel: only for a complete saved draft, and only channels we draft for.
   const { channels, error: channelError } = saved && u?.hasToken ? await loadChannels(userId) : { channels: [] as BufferChannel[], error: null };
+  // Earlier versions of this lesson that already reached Buffer, newest per channel (server re-checks).
+  const priorByChannel = new Map<string, Date>();
+  for (const { post: p, draftId } of posts) {
+    if (!draft || draftId === draft.id || !p.bufferPostId) continue;
+    const at = p.checkedAt ?? p.createdAt;
+    const cur = priorByChannel.get(p.channelId);
+    if (!cur || at > cur) priorByChannel.set(p.channelId, at);
+  }
   const options: SendOption[] = saved
     ? channels.flatMap((c) => {
         const n = networkForService(c.service);
         if (!n || c.isDisconnected || c.isLocked || !saved[n]?.trim()) return [];
-        return [{ id: c.id, name: c.displayName || c.name, networkLabel: NETWORK_LABELS[n], text: saved[n], count: charCount(saved[n], n), limit: LIMITS[n] }];
+        const prior = priorByChannel.get(c.id);
+        return [{
+          id: c.id, name: c.displayName || c.name, networkLabel: NETWORK_LABELS[n], text: saved[n], count: charCount(saved[n], n), limit: LIMITS[n],
+          priorSentLabel: prior ? formatInZone(prior.toISOString(), tz) : null,
+        }];
       })
     : [];
 

@@ -7,6 +7,8 @@ import { btn, card, fieldError, input, label, muted, primary } from "./ui";
 
 export type SendOption = {
   id: string; name: string; networkLabel: string; text: string; count: number; limit: number;
+  /** When an earlier version of this lesson already reached Buffer on this channel (display text). */
+  priorSentLabel?: string | null;
 };
 
 function SubmitButton({ disabled }: { disabled: boolean }) {
@@ -24,10 +26,12 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options }:
   const [channelId, setChannelId] = useState(options[0]?.id ?? "");
   const [mode, setMode] = useState<"queue" | "custom">("queue");
   const [local, setLocal] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
   const chosen = options.find((o) => o.id === channelId) ?? options[0];
   // Preview only. The server recomputes UTC from the wall-clock value on submit.
   const due = useMemo(() => (mode === "custom" && local ? resolveDueAt(local, tz, new Date()) : null), [mode, local, tz]);
   const timeBlocked = mode === "custom" && (!local || (due !== null && !due.ok));
+  const needsConfirm = Boolean(chosen?.priorSentLabel);
 
   return (
     <form action={sendToBuffer} className={`${card} space-y-4`}>
@@ -40,7 +44,7 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options }:
 
       <div>
         <label htmlFor="send-channel" className={label}>Buffer channel</label>
-        <select id="send-channel" name="channelId" value={chosen?.id ?? ""} onChange={(e) => setChannelId(e.target.value)} className={input}>
+        <select id="send-channel" name="channelId" value={chosen?.id ?? ""} onChange={(e) => { setChannelId(e.target.value); setConfirmed(false); }} className={input}>
           {options.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.networkLabel})</option>)}
         </select>
       </div>
@@ -87,8 +91,21 @@ export function SendPanel({ lessonId, draftId, tz, tzLabel, testMode, options }:
         )}
       </fieldset>
 
+      {needsConfirm && chosen && (
+        <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          <p>
+            You already sent an earlier version of this lesson to {chosen.name} on {chosen.priorSentLabel}.
+            Sending again makes a second Buffer draft.
+          </p>
+          <label className="mt-2 flex items-center gap-2 font-medium">
+            <input type="checkbox" name="confirmAnother" value="yes" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            Yes, send another copy
+          </label>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton disabled={!chosen || timeBlocked} />
+        <SubmitButton disabled={!chosen || timeBlocked || (needsConfirm && !confirmed)} />
         {mode === "custom" && local && (
           <button type="button" className={btn} onClick={() => setLocal("")}>Clear time</button>
         )}

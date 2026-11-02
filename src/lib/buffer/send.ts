@@ -43,11 +43,14 @@ export const sendInput = z.object({
   channelId: z.string().trim().min(1).max(64),
   mode: z.enum(["queue", "custom"]),
   local: z.string().trim().max(32).optional().nullable(),
+  /** "Yes, send another copy" checkbox. Required (value "yes") when an earlier version of the
+   *  same lesson already reached Buffer on this channel; anything else counts as unchecked. */
+  confirmAnother: z.string().trim().max(8).optional().nullable(),
 }).refine((v) => v.mode === "queue" || Boolean(v.local), { path: ["local"], message: "Pick a date and time." });
 export type SendInput = z.infer<typeof sendInput>;
 
 export type SendCode =
-  | "sent" | "already_sent" | "retry_later" | "send_limit" | "not_found" | "draft_invalid"
+  | "sent" | "already_sent" | "confirm_another" | "retry_later" | "send_limit" | "not_found" | "draft_invalid"
   | DueAtError | SendErrorCode;
 
 export type SendResult = { code: SendCode; lessonId?: string | null; retryAfter?: number; postId?: string };
@@ -79,7 +82,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   const [u] = await db.select({ tz: users.tz, testMode: users.testMode, channels: users.channelsCache })
     .from(users).where(eq(users.id, userId));
   if (!u) return { code: "not_found" };
-  const [draft] = await db.select({ id: drafts.id, lessonId: drafts.lessonId, perChannelText: drafts.perChannelText })
+  const [draft] = await db.select({ id: drafts.id, lessonId: drafts.lessonId, perChannelText: drafts.perChannelText, createdAt: drafts.createdAt })
     .from(drafts).where(and(eq(drafts.id, input.draftId), eq(drafts.userId, userId)));
   if (!draft) return { code: "not_found" };
   const lessonId = draft.lessonId;
@@ -104,6 +107,12 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   if (existing && !isRetryable(existing, now)) {
     const inFlight = existing.lastStatus === SENDING && !isStale(existing, now);
     return { code: existing.bufferPostId || inFlight ? "already_sent" : "retry_later", lessonId };
+  }
+
+  // --- Earlier version of this lesson already in Buffer on this channel? Require an explicit confirm. ---
+  if (input.confirmAnother !== "yes") {
+    const prior = await priorSendsForLesson(db, userId, draft.lessonId, draft.id);
+    if (prior.some((p) => p.channelId === channel.id)) return { code: "confirm_another", lessonId };
   }
 
   // --- Per-user daily limit, before any Buffer request (token refresh included) ---
@@ -166,6 +175,19 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
 }
 
 type PostRow = typeof bufferPosts.$inferSelect;
+
+/** Successful Buffer sends (a Buffer post id exists) of OTHER draft versions of the same lesson,
+ *  scoped to the user, newest first. Used to warn before sending a second copy to a channel. */
+export async function priorSendsForLesson(db: SendDb, userId: string, lessonId: string | null, currentDraftId: string) {
+  if (!lessonId) return [];
+  return db.select({ channelId: bufferPosts.channelId, sentAt: sql<Date>`coalesce(${bufferPosts.checkedAt}, ${bufferPosts.createdAt})`.mapWith(bufferPosts.createdAt) })
+    .from(bufferPosts).innerJoin(drafts, eq(drafts.id, bufferPosts.draftId))
+    .where(and(
+      eq(drafts.userId, userId), eq(drafts.lessonId, lessonId),
+      sql`${drafts.id} <> ${currentDraftId}`, sql`${bufferPosts.bufferPostId} is not null`,
+    ))
+    .orderBy(sql`coalesce(${bufferPosts.checkedAt}, ${bufferPosts.createdAt}) desc`);
+}
 
 /** When the current attempt started: created_at for the first try, checked_at for a retry. */
 const attemptStartedAt = (r: Pick<PostRow, "createdAt" | "checkedAt">) => r.checkedAt ?? r.createdAt;
