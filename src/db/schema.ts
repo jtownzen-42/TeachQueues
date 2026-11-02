@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, uuid, integer, numeric, date, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, uuid, integer, numeric, date, jsonb, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 
 export type BufferChannel = {
   id: string; name: string; displayName?: string | null; service: string; descriptor?: string;
@@ -83,7 +83,11 @@ export const bufferPosts = pgTable("buffer_posts", {
   externalLink: text("external_link"),
   error: text("error"),
   checkedAt: timestamp("checked_at", { withTimezone: true }),
-});
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // One row per draft x channel: the idempotency claim for "Send to Buffer".
+  uniqueIndex("buffer_posts_draft_channel_uq").on(t.draftId, t.channelId),
+]);
 
 export const results = pgTable("results", {
   id: uuid("id").primaryKey().defaultRandom(),

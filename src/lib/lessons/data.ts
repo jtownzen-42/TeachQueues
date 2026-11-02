@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "@/db";
-import { campaigns, drafts, lessons, products, users } from "@/db/schema";
+import { bufferPosts, campaigns, drafts, lessons, products, users } from "@/db/schema";
 import { getAppSession } from "@/lib/session";
 import { isSameOrigin } from "@/lib/http";
 import { idInput } from "./validation";
@@ -80,6 +80,22 @@ export async function getLessonDraft(userId: string, lessonId: string) {
     .where(and(eq(drafts.userId, userId), eq(drafts.lessonId, lessonId), eq(drafts.status, "draft")))
     .orderBy(desc(drafts.createdAt)).limit(1);
   return d ?? null;
+}
+
+/** The lesson's newest draft in any status (a sent draft is `queued`; editing it saves a new row). */
+export async function getLatestLessonDraft(userId: string, lessonId: string) {
+  const [d] = await getDb().select().from(drafts)
+    .where(and(eq(drafts.userId, userId), eq(drafts.lessonId, lessonId)))
+    .orderBy(desc(drafts.createdAt)).limit(1);
+  return d ?? null;
+}
+
+/** Every Buffer send for this lesson's drafts (newest first), scoped to the user. */
+export async function listLessonBufferPosts(userId: string, lessonId: string) {
+  return getDb().select({ post: bufferPosts, draftId: drafts.id }).from(bufferPosts)
+    .innerJoin(drafts, eq(drafts.id, bufferPosts.draftId))
+    .where(and(eq(drafts.userId, userId), eq(drafts.lessonId, lessonId)))
+    .orderBy(desc(bufferPosts.createdAt));
 }
 
 export type DeleteResult = "deleted" | "not_found" | "in_use";

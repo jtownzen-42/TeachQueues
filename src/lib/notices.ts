@@ -1,3 +1,6 @@
+import { SEND_ERROR_TEXT } from "./buffer/posts";
+import { DUE_AT_ERROR_TEXT } from "./buffer/schedule";
+
 // Fixed, human-readable banners for the home page. Only known codes are shown, so
 // query strings can't put arbitrary text on the page.
 
@@ -52,11 +55,34 @@ const DESK: Record<string, Notice> = {
   not_found: { kind: "error", text: "That item doesn't exist or isn't yours." },
   forbidden: { kind: "error", text: "That request came from another site, so it was ignored." },
   error: { kind: "error", text: "Something went wrong saving that. Please try again." },
+  // Send to Buffer (task 02)
+  sent: { kind: "info", text: "Sent to Buffer as a draft. It won't publish until you schedule it in Buffer." },
+  already_sent: { kind: "info", text: "This draft was already sent to that channel, so nothing new was sent." },
+  retry_later: { kind: "error", text: "That send already failed and was retried in the last 24 hours. To keep the shared Buffer quota fair, you can retry it again tomorrow." },
+  send_limit: { kind: "error", text: "You've sent 20 posts to Buffer today. To keep the shared Buffer quota fair for everyone, try again tomorrow." },
+  busy: { kind: "error", text: "Buffer is busy right now. Nothing was posted. Try again in a few minutes." },
+  reconnect: { kind: "error", text: SEND_ERROR_TEXT.reconnect },
+  rejected: { kind: "error", text: "Buffer didn't accept the post. The status below says why." },
+  buffer_error: { kind: "error", text: SEND_ERROR_TEXT.buffer_error },
+  network: { kind: "error", text: SEND_ERROR_TEXT.network },
+  test_mode: { kind: "error", text: SEND_ERROR_TEXT.test_mode },
+  draft_invalid: { kind: "error", text: "That network's text is over its character limit. Fix it and save the draft first." },
+  time_invalid: { kind: "error", text: DUE_AT_ERROR_TEXT.time_invalid },
+  time_gap: { kind: "error", text: DUE_AT_ERROR_TEXT.time_gap },
+  time_past: { kind: "error", text: DUE_AT_ERROR_TEXT.time_past },
+  time_far: { kind: "error", text: DUE_AT_ERROR_TEXT.time_far },
 };
 
 export function deskNoticesFrom(sp: Record<string, string | string[] | undefined>): Notice[] {
   const n = one(sp.n);
-  return n && DESK[n] ? [DESK[n]] : [];
+  if (!n || !DESK[n]) return [];
+  // busy may carry ?wait=<minutes>: digits only, clamped, so no arbitrary text reaches the page.
+  const wait = one(sp.wait);
+  if (n === "busy" && wait && /^\d{1,4}$/.test(wait)) {
+    const m = Math.min(Math.max(Number(wait), 1), 1440);
+    return [{ kind: "error", text: `Buffer is busy right now. Nothing was posted. Try again in ${m} min.` }];
+  }
+  return [DESK[n]];
 }
 
 export function deskNotice(code: keyof typeof DESK | string): Notice {

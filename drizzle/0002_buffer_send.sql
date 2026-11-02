@@ -1,0 +1,2 @@
+ALTER TABLE "buffer_posts" ADD COLUMN "created_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "buffer_posts_draft_channel_uq" ON "buffer_posts" USING btree ("draft_id","channel_id");

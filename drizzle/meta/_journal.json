@@ -15,6 +15,13 @@
       "when": 1793473308445,
       "tag": "0001_day2_oauth_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793587641603,
+      "tag": "0002_buffer_send",
+      "breakpoints": true
     }
   ]
 }
