@@ -4,8 +4,12 @@ import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { getAppSession } from "@/lib/session";
 import { getChannels } from "@/lib/buffer/sync";
-import { channelErrorText, noticesFrom, type Notice } from "@/lib/notices";
+import { channelErrorText, deskNoticesFrom, noticesFrom, type Notice } from "@/lib/notices";
 import { isTestMode } from "@/lib/testmode";
+import { LANDING } from "@/lib/onboarding/landing";
+import { loadOnboardingFacts } from "@/lib/onboarding/data";
+import { onboardingProgress, type OnboardingFacts } from "@/lib/onboarding/progress";
+import { BrandForm, GettingStarted, LoadSamplesForm, RemoveSamplesDetails } from "@/components/desk/Onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +22,7 @@ type Loaded =
       u: typeof users.$inferSelect;
       channels: NonNullable<(typeof users.$inferSelect)["channelsCache"]>;
       channelError: string | null;
+      facts: OnboardingFacts;
     };
 
 async function loadUser(): Promise<Loaded> {
@@ -36,7 +41,9 @@ async function loadUser(): Promise<Loaded> {
     let channels = u.channelsCache ?? [];
     let channelError: string | null = null;
     try { channels = (await getChannels(u.id)).channels; } catch (e) { channelError = channelErrorText(e); }
-    return { state: "connected", u, channels, channelError };
+    // Checklist facts: one DB query, no Buffer calls (channels come from the cache just refreshed above).
+    const facts = { ...(await loadOnboardingFacts(getDb(), u.id)), channels };
+    return { state: "connected", u, channels, channelError, facts };
   } catch (e) {
     console.error("[teachqueue] home load failed", (e as Error).message);
     return { state: "unavailable" };
@@ -53,15 +60,31 @@ function NoticeBox({ n }: { n: Notice }) {
     : <p role="status" className="mt-6 rounded border border-neutral-300 p-3 dark:border-neutral-700">{n.text}</p>;
 }
 
-function ConnectSection({ lead }: { lead?: string }) {
+/** Public landing for signed-out visitors and the "session expired" state. */
+function Landing({ lead }: { lead?: string }) {
   return (
-    <section className="mt-8" aria-labelledby="connect-heading">
-      <h2 id="connect-heading" className="sr-only">Connect</h2>
-      {lead && <p className="mb-3">{lead}</p>}
-      <p>Connect your Buffer account to pick channels and queue lesson posts. New accounts start in <strong>Test mode</strong>: posts land in Buffer as drafts and never publish.</p>
-      {/* Plain <a>: this is a full-page OAuth redirect, so it must not be prefetched. */}
-      <a href="/api/auth/login" className={`mt-4 ${primary}`}>Connect with Buffer</a>
-    </section>
+    <>
+      <section className="mt-8" aria-labelledby="what-heading">
+        <h2 id="what-heading" className="sr-only">What TeachQueue does</h2>
+        {lead && <p role="status" className="mb-4 rounded border border-neutral-300 p-3 dark:border-neutral-700">{lead}</p>}
+        <p className="text-lg">{LANDING.intro}</p>
+        {/* Plain <a>: this is a full-page OAuth redirect, so it must not be prefetched. */}
+        <a href="/api/auth/login" className={`mt-6 ${primary}`}>{LANDING.signIn}</a>
+      </section>
+      <section className="mt-10" aria-labelledby="how-heading">
+        <h2 id="how-heading" className="text-xl font-semibold">How it works</h2>
+        <ol className="mt-3 list-decimal space-y-3 pl-6">
+          {LANDING.steps.map((st) => (
+            <li key={st.title}><strong>{st.title}.</strong> {st.body}</li>
+          ))}
+        </ol>
+        <p className="mt-3"><Link href="/how-it-works" className="underline">How it works, in more detail</Link></p>
+      </section>
+      <section className="mt-10" aria-labelledby="testmode-heading">
+        <h2 id="testmode-heading" className="text-xl font-semibold">Test mode</h2>
+        <p className="mt-2">{LANDING.testMode}</p>
+      </section>
+    </>
   );
 }
 
@@ -72,19 +95,34 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 font-sans sm:px-8">
-      <h1 className="text-3xl font-bold">TeachQueue</h1>
-      <p className={`mt-2 text-lg ${muted}`}>Teach what you sell. Queue it in Buffer.</p>
+      {data.state === "anon" || data.state === "expired" ? (
+        <>
+          <p className={`text-lg font-semibold ${muted}`}>{LANDING.product}</p>
+          <h1 className="mt-1 text-3xl font-bold sm:text-4xl">{LANDING.headline}</h1>
+        </>
+      ) : (
+        <>
+          <h1 className="text-3xl font-bold">TeachQueue</h1>
+          <p className={`mt-2 text-lg ${muted}`}>{LANDING.headline}</p>
+        </>
+      )}
 
       {notices.map((n, i) => <NoticeBox key={i} n={n} />)}
+      {deskNoticesFrom(sp).map((n, i) => <NoticeBox key={`d${i}`} n={n} />)}
 
-      {data.state === "anon" && <ConnectSection />}
-      {data.state === "expired" && <ConnectSection lead="Your Buffer connection has expired or was revoked. Connect again to continue." />}
+      {data.state === "anon" && <Landing />}
+      {data.state === "expired" && <Landing lead={LANDING.expiredLead} />}
       {data.state === "unavailable" && (
         <section className="mt-8">
           <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-amber-900">TeachQueue can&apos;t reach its database right now. Please try again in a minute.</p>
         </section>
       )}
-      {data.state === "connected" && (
+      {data.state === "connected" && (() => {
+        const progress = onboardingProgress(data.facts);
+        const hasSamples = data.facts.sampleProductCount > 0;
+        return (
+        <>
+        <GettingStarted progress={progress} hasSamples={hasSamples} productCount={data.facts.productCount} />
         <section className="mt-8 space-y-4" aria-labelledby="channels-heading">
           <p className="break-words">Connected as <strong>{data.u.displayName || data.u.email}</strong>{data.u.orgName ? <> · organization <strong>{data.u.orgName}</strong></> : null}</p>
           <p className="text-sm">Time zone: {data.u.tz} · Test mode: <strong>{isTestMode(process.env.TEST_MODE, data.u.testMode) ? "ON (drafts only)" : "OFF"}</strong></p>
@@ -93,7 +131,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           <h2 id="channels-heading" className="text-xl font-semibold">Your Buffer channels</h2>
           {data.channelError && <p role="alert" className="text-red-700 dark:text-red-400">{data.channelError}</p>}
           {data.channels.length === 0 ? (
-            <p>No channels yet. Connect a LinkedIn or Facebook page in Buffer, then re-sync.</p>
+            <p>No channels yet. Connect an X, Facebook or LinkedIn channel in Buffer (buffer.com), then press Re-sync channels.</p>
           ) : (
             <ul className="divide-y rounded border border-neutral-300 dark:divide-neutral-700 dark:border-neutral-700">
               {data.channels.map((c) => (
@@ -108,6 +146,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             <form action="/api/channels/sync" method="post"><button type="submit" className={btn}>Re-sync channels</button></form>
             <form action="/api/auth/logout" method="post"><button type="submit" className={btn}>Disconnect</button></form>
           </div>
+          <BrandForm saved={data.u.brandName} suggestion={data.u.orgName} />
+          {progress.visibility === "hidden" && !hasSamples && (
+            <p className="flex flex-wrap items-center gap-3 text-sm"><LoadSamplesForm back="/" /> <span className={muted}>Two fictional products with one lesson each, to try things out.</span></p>
+          )}
+          {hasSamples && <RemoveSamplesDetails back="/" />}
           <details className="rounded border border-neutral-300 p-3 dark:border-neutral-700">
             <summary className="cursor-pointer">Delete my TeachQueue data</summary>
             <form action="/api/auth/logout" method="post" className="mt-3 space-y-3">
@@ -121,10 +164,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             </form>
           </details>
         </section>
-      )}
+        </>
+        );
+      })()}
       <footer className={`mt-16 text-sm ${muted}`}>
-        <p>TeachQueue is a #BufferCommit entry. Buffer post metrics aren&apos;t available to third-party apps, so results you see here are numbers you enter.</p>
-        <p className="mt-2"><Link href="/privacy" className="underline">Privacy</Link></p>
+        <p>{LANDING.footer} {LANDING.metricsNote}</p>
+        <p className="mt-2"><Link href="/how-it-works" className="underline">How it works</Link> · <Link href="/privacy" className="underline">Privacy</Link></p>
       </footer>
     </main>
   );

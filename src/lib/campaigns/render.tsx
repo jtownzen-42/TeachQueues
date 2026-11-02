@@ -46,13 +46,13 @@ export function campaignCreativeElement(m: CampaignCreativeModel, size: Creative
         </div>
       </div>
 
-      {/* Footer: product name, small mark in the corner */}
+      {/* Footer: product name, and the user's brand name in the corner when they set one */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `${Math.round(st.gap * 0.8)}px ${st.pad}px ${Math.round(st.pad * 0.7)}px` }}>
-        <div style={{ display: "flex", alignItems: "center", flexGrow: 1, flexShrink: 1, minWidth: 0, marginRight: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", flexGrow: 1, flexShrink: 1, minWidth: 0, marginRight: m.mark ? 24 : 0 }}>
           <div style={{ display: "flex", flexShrink: 0, width: st.product * 0.8, height: st.product * 0.8, borderRadius: 6, backgroundColor: m.accent, marginRight: 14 }} />
           <div style={{ display: "flex", flexShrink: 1, minWidth: 0, fontSize: st.product, lineHeight: 1.2, color: INK, wordBreak: "break-word" }}>{m.productName}</div>
         </div>
-        <div style={{ display: "flex", flexShrink: 0, fontSize: st.mark, color: MUTED }}>{m.mark}</div>
+        {m.mark ? <div style={{ display: "flex", flexShrink: 0, fontSize: st.mark, color: MUTED }}>{m.mark}</div> : null}
       </div>
     </div>
   );

@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TeachQueue",
   description: "Teach what you sell. Queue it in Buffer.",
+  openGraph: {
+    title: "TeachQueue",
+    description: "Teach what you sell. Queue it in Buffer. Turn lessons about your products into posts you review, then send them to Buffer as drafts.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

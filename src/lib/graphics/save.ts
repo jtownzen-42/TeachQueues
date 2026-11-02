@@ -8,6 +8,7 @@ import { drafts, lessons, products } from "@/db/schema";
 import type { SendDb } from "@/lib/buffer/send";
 import { cardModelHash, lessonCardModel, type LessonCardModel } from "./card";
 import { currentImageUrl, isPublicBlobUrl, lessonImagePathname } from "./blob";
+import { brandNameFor } from "./brand";
 
 import { IMAGE_SAVE_LIMIT_PER_DAY, IMAGE_WINDOW_MS } from "./limits";
 
@@ -50,7 +51,7 @@ export async function saveLessonImage(deps: SaveImageDeps, userId: string, raw: 
     .where(and(eq(drafts.id, draftId), eq(drafts.userId, userId), eq(drafts.lessonId, lessonId), eq(products.userId, userId)));
   if (!row) return { code: "not_found" };
 
-  const model = lessonCardModel({ lesson: row.lesson, product: row.product });
+  const model = lessonCardModel({ lesson: row.lesson, product: row.product, brandName: await brandNameFor(db, userId) });
   const hash = cardModelHash(model);
 
   // Same graphic already saved: nothing to upload.

@@ -93,7 +93,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   const now = deps.now();
 
   // --- Ownership: the draft is this user's, the channel is in this user's cache ---
-  const [u] = await db.select({ tz: users.tz, testMode: users.testMode, channels: users.channelsCache })
+  const [u] = await db.select({ tz: users.tz, testMode: users.testMode, channels: users.channelsCache, brandName: users.brandName })
     .from(users).where(eq(users.id, userId));
   if (!u) return { code: "not_found" };
   const [draft] = await db.select({
@@ -120,7 +120,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
       .innerJoin(products, and(eq(products.id, campaigns.productId), eq(products.userId, userId)))
       .where(and(eq(campaigns.id, draft.campaignId), eq(campaigns.userId, userId)));
     if (!ctx) return { code: "not_found", ...ref };
-    const state = approvalState(draft, ctx.campaign, ctx.product);
+    const state = approvalState(draft, ctx.campaign, ctx.product, u.brandName);
     if (state.problems[network]) return { code: "draft_invalid", ...ref };
     if (!isApprovalCurrent(draft, state)) return { code: "not_approved", ...ref };
   }
@@ -157,7 +157,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
   // --- Image: only from the database, only if current; HEAD-checked before any claim or Buffer call ---
   let imageUrl: string | null = null;
   if (input.attachImage === "yes") {
-    imageUrl = await resolveImageUrl(db, userId, draft);
+    imageUrl = await resolveImageUrl(db, userId, draft, u.brandName);
     if (imageUrl && !(await imageReachable(deps.fetch ?? fetch, imageUrl))) {
       return { code: "image_unreachable", ...ref };
     }
@@ -286,14 +286,16 @@ async function markFailed(db: SendDb, id: string, text: string) {
  *  a valid public Blob URL; otherwise null (a stale or missing image is simply not attached). */
 export async function resolveImageUrl(
   db: SendDb, userId: string, draft: { lessonId: string | null; campaignId?: string | null; imageUrl: string | null; imageHash: string | null },
+  /** The same user's users.brand_name: drawn on the image, so part of its hash. */
+  brandName: string | null = null,
 ): Promise<string | null> {
-  if (draft.campaignId) return resolveCampaignImageUrl(db, userId, { ...draft, campaignId: draft.campaignId });
+  if (draft.campaignId) return resolveCampaignImageUrl(db, userId, { ...draft, campaignId: draft.campaignId }, brandName);
   if (!draft.lessonId || !draft.imageUrl || !draft.imageHash) return null;
   const [row] = await db.select({ lesson: lessons, product: products }).from(lessons)
     .innerJoin(products, eq(products.id, lessons.productId))
     .where(and(eq(lessons.id, draft.lessonId), eq(products.userId, userId)));
   if (!row) return null;
-  return currentImageUrl(draft, cardModelHash(lessonCardModel(row)));
+  return currentImageUrl(draft, cardModelHash(lessonCardModel({ ...row, brandName })));
 }
 
 /** One HEAD request: 200 with an image/* content type, no redirects, bounded time. */
@@ -310,14 +312,14 @@ export async function imageReachable(fetchImpl: typeof fetch, url: string): Prom
 /** Campaign drafts: the saved square image, only if it is the current creative and a valid Blob URL.
  *  (The approval gate has already required that this image is the one that was approved.) */
 async function resolveCampaignImageUrl(
-  db: SendDb, userId: string, draft: { campaignId: string; imageUrl: string | null; imageHash: string | null },
+  db: SendDb, userId: string, draft: { campaignId: string; imageUrl: string | null; imageHash: string | null }, brandName: string | null,
 ): Promise<string | null> {
   if (!draft.imageUrl || !draft.imageHash) return null;
   const [row] = await db.select({ campaign: campaigns, product: products }).from(campaigns)
     .innerJoin(products, and(eq(products.id, campaigns.productId), eq(products.userId, userId)))
     .where(and(eq(campaigns.id, draft.campaignId), eq(campaigns.userId, userId)));
   if (!row) return null;
-  return currentImageUrl(draft, creativeModelHash(campaignCreativeModel(row)));
+  return currentImageUrl(draft, creativeModelHash(campaignCreativeModel({ ...row, brandName })));
 }
 
 /** Successful Buffer sends (a Buffer post id exists) of OTHER draft versions of the same campaign,

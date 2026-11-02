@@ -6,9 +6,11 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { eq } from "drizzle-orm";
 import * as s from "@/db/schema";
+import type { SendDb } from "@/lib/buffer/send";
+import { loadSamples } from "@/lib/onboarding/samples";
 
 describe("delete user cascade", () => {
-  it("removes products, lessons, campaigns, drafts, buffer_posts and results", async () => {
+  it("removes products (incl. samples), lessons, campaigns, drafts, buffer_posts and results", async () => {
     const client = new PGlite();
     const db = drizzle(client, { schema: s });
     await migrate(db, { migrationsFolder: "./drizzle" });
@@ -21,6 +23,8 @@ describe("delete user cascade", () => {
     await db.insert(s.bufferPosts).values({ draftId: d.id, channelId: "ch", service: "linkedin" });
     await db.insert(s.results).values({ campaignId: c.id, day: "2026-11-01" });
     await db.insert(s.products).values({ userId: other.id, name: "Q", url: "https://y.test" });
+    // Sample products (and their lessons) are removed with the user too.
+    expect((await loadSamples(db as unknown as SendDb, u.id)).inserted).toBe(2);
 
     await db.delete(s.users).where(eq(s.users.id, u.id));
 

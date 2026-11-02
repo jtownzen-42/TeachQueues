@@ -7,6 +7,7 @@ import { bufferPosts, campaigns, drafts, lessons, products, users } from "@/db/s
 import { getAppSession } from "@/lib/session";
 import { isSameOrigin } from "@/lib/http";
 import { idInput } from "./validation";
+import type { SendDb } from "@/lib/buffer/send";
 
 /** The signed-in user's id, or a redirect home. Buffer tokens aren't needed for the desk,
  *  so an expired Buffer connection still lets the user manage products and lessons. */
@@ -103,7 +104,12 @@ export type DeleteResult = "deleted" | "not_found" | "in_use";
 /** Delete a product, its lessons (FK cascade) and their unsent drafts. Refuses when a lesson
  *  has an approved/queued draft or a campaign points at the product, so history is never lost. */
 export async function deleteProductTree(userId: string, productId: string): Promise<DeleteResult> {
-  return getDb().transaction(async (tx) => {
+  return deleteProductTreeWith(getDb(), userId, productId);
+}
+
+/** deleteProductTree with an injected db (same rules), so other services and tests can reuse it. */
+export async function deleteProductTreeWith(db: SendDb, userId: string, productId: string): Promise<DeleteResult> {
+  return db.transaction(async (tx) => {
     const [p] = await tx.select({ id: products.id }).from(products)
       .where(and(eq(products.id, productId), eq(products.userId, userId))).for("update");
     if (!p) return "not_found";

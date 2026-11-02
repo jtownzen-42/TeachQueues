@@ -6,6 +6,7 @@ import { campaigns, drafts, products } from "@/db/schema";
 import type { SendDb } from "@/lib/buffer/send";
 import { fieldErrors, type FieldErrors } from "@/lib/lessons/validation";
 import { approvalState } from "./approval";
+import { brandNameFor } from "@/lib/graphics/brand";
 import { CAMPAIGN_NETWORKS, campaignDraftProblems, campaignTextsFrom, type CampaignTexts } from "./templates";
 import { campaignLinks } from "./utm";
 import { approveInput, briefInput, variantsInput, type BriefInput } from "./validation";
@@ -121,7 +122,7 @@ export async function approveCampaignDraft(db: SendDb, userId: string, raw: unkn
   if (!draft) return { code: "not_found", campaignId };
   if (parsed.data.checkAccurate !== "yes" || parsed.data.checkLink !== "yes") return { code: "checks_required", campaignId };
 
-  const state = approvalState(draft, owned.campaign, owned.product);
+  const state = approvalState(draft, owned.campaign, owned.product, await brandNameFor(db, userId));
   if (!state.hash || Object.keys(state.problems).length > 0) return { code: "variants_invalid", campaignId };
   if (state.hash !== hash) return { code: "approval_changed", campaignId };
   if (draft.approvedHash === state.hash && (draft.status === "approved" || draft.status === "queued")) {

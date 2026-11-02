@@ -8,6 +8,8 @@ import { deleteProduct } from "../actions";
 import { ProductForm } from "@/components/desk/ProductForm";
 import { LessonForm } from "@/components/desk/LessonForm";
 import { card, Crumbs, DeleteDetails, linkCls, muted, NoticeBox, Swatch } from "@/components/desk/ui";
+import { SampleBadge } from "@/components/desk/Onboarding";
+import { SAMPLE_NOTE } from "@/lib/onboarding/samples";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Product · TeachQueue" };
@@ -27,14 +29,15 @@ export default async function ProductPage({ params, searchParams }: Props) {
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 font-sans sm:px-8">
       <Crumbs items={[{ href: "/", label: "TeachQueue" }, { href: "/products", label: "Products" }, { label: product.name }]} />
-      <h1 className="mt-2 flex items-center gap-3 break-words text-3xl font-bold"><Swatch color={color} />{product.name}</h1>
+      <h1 className="mt-2 flex items-center gap-3 break-words text-3xl font-bold"><Swatch color={color} />{product.name}{product.isSample && <SampleBadge />}</h1>
       <p className={`mt-1 break-all text-sm ${muted}`}>{product.url}</p>
+      {product.isSample && <p className={`mt-1 text-sm ${muted}`}>{SAMPLE_NOTE}</p>}
       {deskNoticesFrom(sp).map((n, i) => <NoticeBox key={i} n={n} />)}
 
       <section className="mt-8" aria-labelledby="lessons-heading">
         <h2 id="lessons-heading" className="text-xl font-semibold">Lessons</h2>
         {items.length === 0 ? (
-          <p className={`mt-3 ${muted}`}>No lessons yet. Add one below and TeachQueue drafts the posts for you.</p>
+          <p className={`mt-3 ${muted}`}>No lessons yet. Add a short lesson below: a term, a common misconception, or a prompt demonstration.</p>
         ) : (
           <ul className="mt-3 divide-y rounded border border-neutral-300 dark:divide-neutral-700 dark:border-neutral-700">
             {items.map((l) => (

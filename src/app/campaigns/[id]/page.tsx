@@ -63,7 +63,7 @@ export default async function CampaignPage({ params, searchParams }: Props) {
     getLatestCampaignDraft(userId, campaign.id),
     listCampaignBufferPosts(userId, campaign.id),
     listProducts(userId),
-    getDb().select({ tz: users.tz, testMode: users.testMode, hasToken: sql<boolean>`${users.accessTokenEnc} is not null`, cached: users.channelsCache }).from(users).where(eq(users.id, userId)),
+    getDb().select({ tz: users.tz, testMode: users.testMode, hasToken: sql<boolean>`${users.accessTokenEnc} is not null`, cached: users.channelsCache, brandName: users.brandName }).from(users).where(eq(users.id, userId)),
   ]);
   const tz = safeTimeZone(u?.tz);
   const now = new Date();
@@ -80,9 +80,9 @@ export default async function CampaignPage({ params, searchParams }: Props) {
   const links = product ? campaignLinks(campaign, product) : null;
   const generated = product && links ? campaignDraftAll(brief, product, links) : null;
   const saved = campaignTextsFrom(draft?.perChannelText);
-  const state = draft && product ? approvalState(draft, campaign, product) : null;
+  const state = draft && product ? approvalState(draft, campaign, product, u?.brandName) : null;
   const approvalCurrent = Boolean(draft && state && isApprovalCurrent(draft, state));
-  const creative = product ? campaignCreativeModel({ campaign, product }) : null;
+  const creative = product ? campaignCreativeModel({ campaign, product, brandName: u?.brandName }) : null;
   const creativeHash12 = state?.creativeHash.slice(0, 12) ?? "";
   const savedLabel = draft
     ? `${draft.status === "queued" ? "sent version, " : ""}saved ${fmt(draft.createdAt)}${draft.status === "queued" ? "; saving changes makes a new version" : ""}`

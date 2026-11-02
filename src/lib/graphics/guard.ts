@@ -10,6 +10,8 @@ export type GraphicGuardDeps = {
   getUserId: () => Promise<string | null>;
   /** The lesson + product only when the lesson belongs to `userId` (getLessonWithProduct). */
   loadLesson: (userId: string, lessonId: string) => Promise<{ lesson: LessonRow; product: ProductRow } | null>;
+  /** The same user's users.brand_name (drawn in the corner; null = no mark). The route always passes it. */
+  getBrandName?: (userId: string) => Promise<string | null>;
 };
 
 export type GraphicGuardResult =
@@ -24,6 +26,6 @@ export async function graphicGuard(deps: GraphicGuardDeps, rawLessonId: unknown)
   if (!id.success) return { status: 404 };
   const row = await deps.loadLesson(userId, id.data);
   if (!row) return { status: 404 };
-  const model = lessonCardModel(row);
+  const model = lessonCardModel({ ...row, brandName: deps.getBrandName ? await deps.getBrandName(userId) : null });
   return { status: 200, model, hash: cardModelHash(model) };
 }

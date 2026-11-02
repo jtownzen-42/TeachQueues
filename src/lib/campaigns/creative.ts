@@ -1,6 +1,6 @@
 // What the campaign creative draws, as plain data, plus its hash. Reuses the task 03 helpers.
 import { createHash } from "node:crypto";
-import { accentFor, CARD_MARK, onAccentFor, stableJson, truncateWords } from "@/lib/graphics/card";
+import { accentFor, brandMark, onAccentFor, stableJson, truncateWords } from "@/lib/graphics/card";
 
 /** Max lengths in code points, ellipsis included (fit the smallest font step of every size). */
 export const CREATIVE_LIMITS = { headline: 90, sub: 140, cta: 40, product: 40 } as const;
@@ -22,13 +22,14 @@ export type CampaignCreativeModel = {
   productName: string;
   accent: string;
   onAccent: "#000000" | "#ffffff";
-  mark: typeof CARD_MARK;
+  /** The user's brand name, or null for no mark. */
+  mark: string | null;
 };
 
 type CampaignIn = { keyMessage: string | null; angle: string | null; cta: string | null };
 type ProductIn = { name: string; brandColors: string[] | null | unknown };
 
-export function campaignCreativeModel({ campaign, product }: { campaign: CampaignIn; product: ProductIn }): CampaignCreativeModel {
+export function campaignCreativeModel({ campaign, product, brandName }: { campaign: CampaignIn; product: ProductIn; brandName?: string | null }): CampaignCreativeModel {
   const accent = accentFor(product);
   return {
     headline: truncateWords(campaign.keyMessage ?? "", CREATIVE_LIMITS.headline),
@@ -37,7 +38,7 @@ export function campaignCreativeModel({ campaign, product }: { campaign: Campaig
     productName: truncateWords(product.name, CREATIVE_LIMITS.product),
     accent,
     onAccent: onAccentFor(accent),
-    mark: CARD_MARK,
+    mark: brandMark(brandName),
   };
 }
 

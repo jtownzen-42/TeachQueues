@@ -8,6 +8,7 @@ import { getAppSession } from "@/lib/session";
 import { getLessonWithProduct } from "@/lib/lessons/data";
 import { graphicGuard } from "@/lib/graphics/guard";
 import { renderLessonCard } from "@/lib/graphics/render";
+import { brandNameFor } from "@/lib/graphics/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   let g: Awaited<ReturnType<typeof graphicGuard>>;
   try {
-    g = await graphicGuard({ getUserId: sessionUserId, loadLesson: getLessonWithProduct }, id);
+    g = await graphicGuard({ getUserId: sessionUserId, loadLesson: getLessonWithProduct, getBrandName: (uid) => brandNameFor(getDb(), uid) }, id);
   } catch (e) {
     console.error("[teachqueue] graphic preview failed", (e as Error)?.name);
     return new NextResponse("Couldn't draw the graphic right now.", { status: 500, headers: NO_STORE });

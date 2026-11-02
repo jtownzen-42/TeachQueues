@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  accentFor, CARD_LIMITS, CARD_MARK, cardAltText, cardModelHash, collapse, contrastRatio, FALLBACK_ACCENT,
+  accentFor, CARD_LIMITS, cardAltText, cardModelHash, collapse, contrastRatio, FALLBACK_ACCENT,
   lessonCardModel, onAccentFor, stableJson, truncateWords,
 } from "@/lib/graphics/card";
 import { currentImageUrl, isPublicBlobUrl, lessonImagePathname } from "@/lib/graphics/blob";
 
-const product = { name: "Prompt Pantry", brandColors: ["#2563eb"] };
+const product = { name: "Example Kit", brandColors: ["#2563eb"] };
 const lesson = { term: "Few-shot prompting", definition: "Show two or three worked examples first.", example: "Two blurbs, then a third.", format: "prompt_demo" as const };
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
 
@@ -45,9 +45,10 @@ describe("lessonCardModel", () => {
     const m = lessonCardModel({ lesson, product });
     expect(m).toEqual({
       title: "Few-shot prompting", body: "Show two or three worked examples first.", example: "Two blurbs, then a third.",
-      productName: "Prompt Pantry", formatLabel: "Prompt demonstration", accent: "#2563eb", onAccent: "#ffffff", mark: "Alexx Forge",
+      productName: "Example Kit", formatLabel: "Prompt demonstration", accent: "#2563eb", onAccent: "#ffffff", mark: null,
     });
-    expect(m.mark).toBe(CARD_MARK);
+    expect(m.mark).toBeNull(); // no brand name saved -> no mark
+    expect(lessonCardModel({ lesson, product, brandName: "Studio Example" }).mark).toBe("Studio Example");
   });
   it("glossary cards have no example line; misconception cards do", () => {
     expect(lessonCardModel({ lesson: { ...lesson, format: "glossary" }, product }).example).toBeNull();
@@ -109,7 +110,7 @@ describe("cardModelHash", () => {
     expect(cardModelHash(lessonCardModel({ lesson: { ...lesson, term: "  Few-shot \n prompting " }, product }))).toBe(base);
   });
   it("alt text names the title and product", () => {
-    expect(cardAltText(lessonCardModel({ lesson, product }))).toBe("Lesson graphic: Few-shot prompting (Prompt demonstration) for Prompt Pantry");
+    expect(cardAltText(lessonCardModel({ lesson, product }))).toBe("Lesson graphic: Few-shot prompting (Prompt demonstration) for Example Kit");
   });
 });
 

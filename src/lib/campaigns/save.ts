@@ -9,6 +9,7 @@ import { currentImageUrl, isPublicBlobUrl } from "@/lib/graphics/blob";
 import { campaignCreativeModel, creativeModelHash, type CampaignCreativeModel } from "./creative";
 import { loadOwnedCampaign } from "./service";
 import { campaignImageInput } from "./validation";
+import { brandNameFor } from "@/lib/graphics/brand";
 
 /** Same deps as saveLessonImage, with a renderer for the square campaign creative. */
 export type SaveCampaignImageDeps = Omit<SaveImageDeps, "render"> & {
@@ -32,7 +33,7 @@ export async function saveCampaignImage(deps: SaveCampaignImageDeps, userId: str
     .where(and(eq(drafts.id, draftId), eq(drafts.userId, userId), eq(drafts.campaignId, campaignId)));
   if (!draft) return { code: "not_found", campaignId };
 
-  const model = campaignCreativeModel({ campaign: owned.campaign, product: owned.product });
+  const model = campaignCreativeModel({ campaign: owned.campaign, product: owned.product, brandName: await brandNameFor(db, userId) });
   const hash = creativeModelHash(model);
   const existing = currentImageUrl(draft, hash);
   if (existing) return { code: "image_saved", campaignId, url: existing, uploaded: false };

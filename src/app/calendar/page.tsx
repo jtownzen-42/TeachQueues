@@ -14,6 +14,7 @@ import { calendarRange, dayLabel, groupByLocalDay } from "@/lib/calendar/range";
 import { COUNTED_STATUSES } from "@/lib/calendar/status";
 import { formatInZone, safeTimeZone } from "@/lib/tz";
 import { refreshFromBuffer } from "./actions";
+import { loadCalendarFacts } from "@/lib/onboarding/data";
 import { btn, card, Crumbs, linkCls, muted, NoticeBox } from "@/components/desk/ui";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +77,7 @@ export default async function CalendarPage({ searchParams }: Props) {
   ]);
   const tz = safeTimeZone(u?.tz);
   const items = await loadCalendarItems(db, userId, u?.channels ?? []);
+  const facts = items.length === 0 ? await loadCalendarFacts(db, userId) : null;
   const range = calendarRange({ view: sp.view, start: sp.start }, tz, now);
   const unscheduled = items.filter((i) => !i.scheduled).sort((a, b) => b.iso.localeCompare(a.iso));
   const days = groupByLocalDay(items.filter((i) => i.scheduled), range, tz);
@@ -144,6 +146,15 @@ export default async function CalendarPage({ searchParams }: Props) {
       {items.length === 0 ? (
         <p className="mt-6">
           Nothing planned yet. Draft a lesson or a campaign first. <Link href="/products" className={linkCls}>Lesson desk</Link> · <Link href="/campaigns" className={linkCls}>Marketing desk</Link>
+          <span className="mt-2 block">
+            {!facts || facts.productCount === 0
+              ? <>Next step: <Link href="/products" className={linkCls}>add a product</Link> (or load the samples there).</>
+              : facts.draftCount === 0
+                ? <>Next step: open a lesson and save its draft. <Link href="/products" className={linkCls}>Go to your products</Link></>
+                : facts.sentCount === 0
+                  ? "Next step: send a saved draft to Buffer from its lesson or campaign page."
+                  : null}
+          </span>
         </p>
       ) : (
         <>

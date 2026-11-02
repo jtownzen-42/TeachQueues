@@ -32,9 +32,10 @@ export type ApprovalState = {
 };
 
 /** Everything approval and sending need, from the draft + campaign + product rows. */
-export function approvalState(draft: DraftRow, campaign: CampaignRow, product: ProductRow): ApprovalState {
+/** `brandName` is the same user's users.brand_name: it is drawn on the creative, so it is part of the image hash. */
+export function approvalState(draft: DraftRow, campaign: CampaignRow, product: ProductRow, brandName?: string | null): ApprovalState {
   const links = campaignLinks(campaign, product);
-  const creativeHash = creativeModelHash(campaignCreativeModel({ campaign, product }));
+  const creativeHash = creativeModelHash(campaignCreativeModel({ campaign, product, brandName }));
   const imageUrl = currentImageUrl(draft, creativeHash);
   const imageHash = imageUrl ? draft.imageHash : null;
   const texts = campaignTextsFrom(draft.perChannelText);

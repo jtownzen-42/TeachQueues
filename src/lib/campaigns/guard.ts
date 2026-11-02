@@ -11,6 +11,8 @@ export type CreativeGuardDeps = {
   getUserId: () => Promise<string | null>;
   /** The campaign (+ its product, or null) only when it belongs to `userId`. */
   loadCampaign: (userId: string, campaignId: string) => Promise<{ campaign: CampaignRow; product: ProductRow | null } | null>;
+  /** The same user's users.brand_name (drawn in the corner; null = no mark). The route always passes it. */
+  getBrandName?: (userId: string) => Promise<string | null>;
 };
 
 export type CreativeGuardResult =
@@ -26,7 +28,7 @@ export async function creativeGuard(deps: CreativeGuardDeps, rawId: unknown, raw
   const row = await deps.loadCampaign(userId, id.data);
   if (!row || !row.product) return { status: 404 };
   if (!isCreativeSize(rawSize)) return { status: 400 };
-  const model = campaignCreativeModel({ campaign: row.campaign, product: row.product });
+  const model = campaignCreativeModel({ campaign: row.campaign, product: row.product, brandName: deps.getBrandName ? await deps.getBrandName(userId) : null });
   // The filename is built only from the validated slug ([a-z0-9-]) and the size key.
   return { status: 200, model, size: rawSize, hash: creativeModelHash(model), filename: `teachqueue-${campaignSlug(row.campaign)}-${rawSize}.png` };
 }

@@ -38,13 +38,13 @@ export function lessonCardElement(m: LessonCardModel) {
         ) : null}
       </div>
 
-      {/* Footer: product name, small mark in the corner */}
+      {/* Footer: product name, and the user's brand name in the corner when they set one */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `28px ${PAD}px 52px` }}>
-        <div style={{ display: "flex", alignItems: "center", flexGrow: 1, flexShrink: 1, minWidth: 0, marginRight: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", flexGrow: 1, flexShrink: 1, minWidth: 0, marginRight: m.mark ? 32 : 0 }}>
           <div style={{ display: "flex", flexShrink: 0, width: 28, height: 28, borderRadius: 6, backgroundColor: m.accent, marginRight: 18 }} />
           <div style={{ display: "flex", flexShrink: 1, minWidth: 0, fontSize: 34, lineHeight: 1.2, color: INK, wordBreak: "break-word" }}>{m.productName}</div>
         </div>
-        <div style={{ display: "flex", flexShrink: 0, fontSize: 24, color: MUTED }}>{m.mark}</div>
+        {m.mark ? <div style={{ display: "flex", flexShrink: 0, fontSize: 24, color: MUTED }}>{m.mark}</div> : null}
       </div>
     </div>
   );

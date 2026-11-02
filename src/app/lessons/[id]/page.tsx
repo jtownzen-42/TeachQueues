@@ -19,6 +19,8 @@ import { LessonGraphic, type SavedImageState } from "@/components/desk/LessonGra
 import { cardAltText, cardModelHash, lessonCardModel } from "@/lib/graphics/card";
 import { currentImageUrl } from "@/lib/graphics/blob";
 import { card, Crumbs, DeleteDetails, muted, NoticeBox } from "@/components/desk/ui";
+import { SampleBadge } from "@/components/desk/Onboarding";
+import { SAMPLE_NOTE } from "@/lib/onboarding/samples";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Lesson drafts · TeachQueue" };
@@ -56,7 +58,7 @@ export default async function LessonPage({ params, searchParams }: Props) {
   const [draft, posts, [u]] = await Promise.all([
     getLatestLessonDraft(userId, lesson.id),
     listLessonBufferPosts(userId, lesson.id),
-    getDb().select({ tz: users.tz, testMode: users.testMode, hasToken: sql<boolean>`${users.accessTokenEnc} is not null`, cached: users.channelsCache }).from(users).where(eq(users.id, userId)),
+    getDb().select({ tz: users.tz, testMode: users.testMode, hasToken: sql<boolean>`${users.accessTokenEnc} is not null`, cached: users.channelsCache, brandName: users.brandName }).from(users).where(eq(users.id, userId)),
   ]);
   const tz = safeTimeZone(u?.tz);
   const now = new Date();
@@ -79,7 +81,7 @@ export default async function LessonPage({ params, searchParams }: Props) {
   const savedLabel = draft ? (sentVersion ? `sent version, created ${created}; saving changes makes a new version` : `created ${created}`) : null;
 
   // Lesson graphic: the hash of what is drawn now decides whether a saved image is current.
-  const cardModel = lessonCardModel({ lesson, product });
+  const cardModel = lessonCardModel({ lesson, product, brandName: u?.brandName });
   const cardHash = cardModelHash(cardModel);
   const imageUrl = draft ? currentImageUrl(draft, cardHash) : null;
   const savedImage: SavedImageState = imageUrl && draft?.imageSavedAt
@@ -115,7 +117,8 @@ export default async function LessonPage({ params, searchParams }: Props) {
         { href: `/products/${product.id}`, label: product.name }, { label: lesson.term },
       ]} />
       <h1 className="mt-2 break-words text-3xl font-bold">{lesson.term}</h1>
-      <p className={`mt-1 text-sm ${muted}`}>{FORMAT_LABELS[lesson.format]} · for {product.name}</p>
+      <p className={`mt-1 text-sm ${muted}`}>{FORMAT_LABELS[lesson.format]} · for {product.name}{product.isSample && <SampleBadge />}</p>
+      {product.isSample && <p className={`mt-1 text-sm ${muted}`}>{SAMPLE_NOTE}</p>}
       {deskNoticesFrom(sp).map((n, i) => <NoticeBox key={i} n={n} />)}
       {failureDetail && <NoticeBox n={failureDetail} />}
 

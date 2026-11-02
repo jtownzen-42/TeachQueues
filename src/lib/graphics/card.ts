@@ -9,7 +9,8 @@ import { FORMAT_LABELS, type LessonFormat } from "@/lib/lessons/templates";
 export const CARD_LIMITS = { title: 60, body: 220, example: 140, product: 40 } as const;
 /** Used when the product has no valid #rrggbb brand color. */
 export const FALLBACK_ACCENT = "#1f4e79";
-export const CARD_MARK = "Alexx Forge" as const;
+/** Max code points of the per-user brand name drawn in the corner (users.brand_name). */
+export const MARK_MAX = 40;
 /** Bump when the drawing changes, so saved images built from the old design read as out of date. */
 export const CARD_DESIGN_VERSION = 1;
 
@@ -22,7 +23,8 @@ export type LessonCardModel = {
   formatLabel: string;
   accent: string;
   onAccent: "#000000" | "#ffffff";
-  mark: typeof CARD_MARK;
+  /** The user's brand name, or null for no mark (nothing drawn in that corner). */
+  mark: string | null;
 };
 
 type LessonIn = { term: string; definition: string; example?: string | null; format: LessonFormat };
@@ -69,7 +71,14 @@ export function accentFor(product: ProductIn): string {
   return c && /^#[0-9a-fA-F]{6}$/.test(c) ? c.toLowerCase() : FALLBACK_ACCENT;
 }
 
-export function lessonCardModel({ lesson, product }: { lesson: LessonIn; product: ProductIn }): LessonCardModel {
+/** users.brand_name -> the mark to draw: trimmed, whitespace collapsed, word-truncated to MARK_MAX;
+ *  null / empty -> null (no mark). */
+export function brandMark(brandName: string | null | undefined): string | null {
+  const t = truncateWords(brandName ?? "", MARK_MAX);
+  return t ? t : null;
+}
+
+export function lessonCardModel({ lesson, product, brandName }: { lesson: LessonIn; product: ProductIn; brandName?: string | null }): LessonCardModel {
   const accent = accentFor(product);
   const showExample = lesson.format === "prompt_demo" || lesson.format === "misconception";
   const ex = showExample ? collapse(lesson.example) : "";
@@ -81,7 +90,7 @@ export function lessonCardModel({ lesson, product }: { lesson: LessonIn; product
     formatLabel: FORMAT_LABELS[lesson.format] ?? FORMAT_LABELS.glossary,
     accent,
     onAccent: onAccentFor(accent),
-    mark: CARD_MARK,
+    mark: brandMark(brandName),
   };
 }
 

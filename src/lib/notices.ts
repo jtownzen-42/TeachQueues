@@ -99,6 +99,14 @@ const DESK: Record<string, Notice> = {
   result_saved: { kind: "info", text: "Day saved." },
   result_deleted: { kind: "info", text: "Day deleted." },
   result_invalid: { kind: "error", text: "Some numbers need fixing. See the notes in the form." },
+  // Onboarding (task 06)
+  samples_loaded: { kind: "info", text: "Two sample products, each with one lesson, were added. Sample links point to example.com." },
+  samples_already_loaded: { kind: "info", text: "The sample products are already loaded, so nothing new was added." },
+  samples_removed: { kind: "info", text: "Sample products and their lessons were removed. Your own products stay." },
+  samples_partly_removed: { kind: "info", text: "Some sample products were kept: samples you edited, used in a campaign or sent to Buffer stay, so your work and history aren't lost." },
+  no_samples: { kind: "info", text: "There are no sample products to remove." },
+  brand_saved: { kind: "info", text: "Brand name saved. New graphics use it; saved images will show as out of date until you save them again." },
+  brand_invalid: { kind: "error", text: "That brand name can't be used. Use up to 40 characters with no control or invisible characters." },
   image_unreachable: { kind: "error", text: "The saved image couldn't be reached, so nothing was sent to Buffer. Save the image again, then retry." },
 };
 

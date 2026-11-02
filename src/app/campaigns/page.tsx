@@ -4,6 +4,7 @@ import { listCampaigns } from "@/lib/campaigns/data";
 import { listProducts, requireUserId } from "@/lib/lessons/data";
 import { deskNoticesFrom } from "@/lib/notices";
 import { Crumbs, linkCls, muted, NoticeBox, primary } from "@/components/desk/ui";
+import { LoadSamplesForm } from "@/components/desk/Onboarding";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Campaigns · TeachQueue" };
@@ -27,7 +28,10 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
       {deskNoticesFrom(sp).map((n, i) => <NoticeBox key={i} n={n} />)}
 
       {productRows.length === 0 ? (
-        <p className="mt-8">Add a product first, then create a campaign for it. <Link href="/products" className={linkCls}>Go to products</Link></p>
+        <div className="mt-8 space-y-3">
+          <p>Add a product first, then create a campaign for it. <Link href="/products" className={linkCls}>Go to products</Link></p>
+          <LoadSamplesForm back="/campaigns" prominent />
+        </div>
       ) : (
         <p className="mt-8"><Link href="/campaigns/new" className={primary}>New campaign</Link></p>
       )}
@@ -35,7 +39,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
       <section className="mt-8" aria-labelledby="campaigns-heading">
         <h2 id="campaigns-heading" className="text-xl font-semibold">Your campaigns</h2>
         {items.length === 0 ? (
-          <p className={`mt-3 ${muted}`}>No campaigns yet.</p>
+          <p className={`mt-3 ${muted}`}>{productRows.length === 0 ? "No campaigns yet." : <>No campaigns yet. Start one for a product you want to promote. <Link href="/campaigns/new" className={linkCls}>New campaign</Link></>}</p>
         ) : (
           <ul className="mt-3 divide-y rounded border border-neutral-300 dark:divide-neutral-700 dark:border-neutral-700">
             {items.map(({ campaign: c, productName, status }) => {

@@ -12,7 +12,7 @@ import { FALLBACK_ACCENT } from "@/lib/graphics/card";
 
 const words = (n: number, w = "word") => Array.from({ length: n }, (_, i) => `${w}${i % 9}`).join(" ");
 const campaign = { keyMessage: "Plan a week of posts in 20 minutes.", angle: "Free sample kit with three ready-made templates.", cta: "Get the kit", name: "Spring kit", utmCampaign: null };
-const product = { name: "Prompt Pantry", brandColors: ["#2563eb"] };
+const product = { name: "Example Kit", brandColors: ["#2563eb"] };
 const longModel = campaignCreativeModel({
   campaign: { keyMessage: words(40, "Headline"), angle: words(60, "angle"), cta: words(12, "Callto") },
   product: { name: words(10, "Productname"), brandColors: ["#fde047"] },
@@ -31,8 +31,8 @@ function pngSize(buf: Uint8Array) {
 describe("campaignCreativeModel", () => {
   it("draws the brief and product with the mark", () => {
     expect(campaignCreativeModel({ campaign, product })).toEqual({
-      headline: campaign.keyMessage, sub: campaign.angle, cta: "Get the kit", productName: "Prompt Pantry",
-      accent: "#2563eb", onAccent: "#ffffff", mark: "Alexx Forge",
+      headline: campaign.keyMessage, sub: campaign.angle, cta: "Get the kit", productName: "Example Kit",
+      accent: "#2563eb", onAccent: "#ffffff", mark: null,
     });
   });
   it("truncates every field to its limit on word boundaries", () => {
@@ -53,7 +53,7 @@ describe("campaignCreativeModel", () => {
     expect(CREATIVE_SIZES).toEqual({ square: [1080, 1080], landscape: [1200, 628], story: [1080, 1920] });
     expect(isCreativeSize("story")).toBe(true);
     for (const bad of ["huge", "toString", "__proto__", "", null]) expect(isCreativeSize(bad)).toBe(false);
-    expect(creativeAltText(campaignCreativeModel({ campaign, product }), "landscape")).toBe("Campaign creative (1200×628): Plan a week of posts in 20 minutes. — Get the kit for Prompt Pantry");
+    expect(creativeAltText(campaignCreativeModel({ campaign, product }), "landscape")).toBe("Campaign creative (1200×628): Plan a week of posts in 20 minutes. — Get the kit for Example Kit");
   });
   it("longest text uses the smallest font steps", () => {
     expect(creativeSteps(longModel, "square")).toMatchObject({ headline: 54, sub: 32 });

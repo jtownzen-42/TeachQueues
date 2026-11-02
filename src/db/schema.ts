@@ -31,6 +31,8 @@ export const users = pgTable("users", {
   // Calendar read-back (0005): last successful read, and last attempt (drives the 60 s cooldown).
   postsReadAt: timestamp("posts_read_at", { withTimezone: true }),
   postsReadAttemptAt: timestamp("posts_read_attempt_at", { withTimezone: true }),
+  /** Brand name drawn in the corner of this user's graphics (0006). null/empty = no mark. */
+  brandName: text("brand_name"),
 });
 
 export const products = pgTable("products", {
@@ -39,7 +41,14 @@ export const products = pgTable("products", {
   name: text("name").notNull(),
   url: text("url").notNull(),
   brandColors: jsonb("brand_colors").$type<string[]>().notNull().default([]),
-});
+  // Onboarding samples (0006): generic fictional products loaded in one click, removable again.
+  isSample: boolean("is_sample").notNull().default(false),
+  /** Stable key per sample ("sourdough", "budget"); NULL for the user's own products. */
+  sampleKey: text("sample_key"),
+}, (t) => [
+  // Loading samples twice can't duplicate them (NULLs are distinct, so normal products are unaffected).
+  uniqueIndex("products_user_sample_key_uq").on(t.userId, t.sampleKey),
+]);
 
 export const lessons = pgTable("lessons", {
   id: uuid("id").primaryKey().defaultRandom(),
