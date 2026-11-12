@@ -26,10 +26,10 @@
 import { sanitizeBufferMessage } from "./posts";
 
 export const READ_STATUS_QUERY = /* GraphQL */ `
-  query TeachQueuePostStatus($organizationId: OrganizationId!, $channelIds: [ChannelId!], $startDate: DateTime, $first: Int, $after: String) {
+  query TeachQueuePostStatus($organizationId: OrganizationId!, $channelIds: [ChannelId!], $status: [PostStatus!], $startDate: DateTime, $first: Int, $after: String) {
     posts(first: $first, after: $after, input: {
       organizationId: $organizationId,
-      filter: { channelIds: $channelIds, startDate: $startDate },
+      filter: { channelIds: $channelIds, status: $status, startDate: $startDate },
       sort: [{ field: createdAt, direction: desc }]
     }) {
       edges { node { id channelId status dueAt sentAt externalLink error { message } } }
@@ -48,6 +48,8 @@ export function readStatusVariables(opts: { organizationId: string; channelIds: 
   return {
     organizationId: opts.organizationId,
     channelIds: [...new Set(opts.channelIds)].sort(),
+    // Name every status explicitly (as Buffer's examples do) so drafts are returned too.
+    status: [...BUFFER_POST_STATUSES],
     startDate: opts.startDate.toISOString(),
     first: READ_PAGE_SIZE,
     ...(opts.after ? { after: opts.after } : {}),

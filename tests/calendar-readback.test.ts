@@ -81,7 +81,7 @@ describe("one request, the right query", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(bodies()[0]);
     expect(body.query).toMatch(/^\s*query /);
-    expect(body.variables).toEqual({ organizationId: "org_test_1", channelIds: ["ch_test_1"], startDate: new Date(NOW.getTime() - 3_600_000 - 86_400_000).toISOString(), first: 50 });
+    expect(body.variables).toEqual({ organizationId: "org_test_1", channelIds: ["ch_test_1"], status: ["draft", "error", "needs_approval", "scheduled", "sending", "sent"], startDate: new Date(NOW.getTime() - 3_600_000 - 86_400_000).toISOString(), first: 50 });
     const after = await rowById(row.id);
     expect(after).toMatchObject({ bufferStatus: "sent", bufferError: null, externalLink: "https://www.linkedin.com/feed/update/9", bufferMissingAt: null });
     expect(after.dueAt?.toISOString()).toBe("2026-11-10T15:00:00.000Z");

@@ -17,9 +17,9 @@ describe("READ_STATUS_QUERY", () => {
     expect(READ_STATUS_QUERY).toContain("pageInfo { hasNextPage endCursor }");
     expect(READ_STATUS_QUERY).toContain("sort: [{ field: createdAt, direction: desc }]");
   });
-  it("variables: distinct sorted channel ids, ISO startDate, first 50, after only when set", () => {
+  it("variables: distinct sorted channel ids, every status (drafts included), ISO startDate, first 50, after only when set", () => {
     const v = readStatusVariables({ organizationId: "org_test_1", channelIds: ["ch_b", "ch_a", "ch_b"], startDate: new Date("2026-11-01T00:00:00Z") });
-    expect(v).toEqual({ organizationId: "org_test_1", channelIds: ["ch_a", "ch_b"], startDate: "2026-11-01T00:00:00.000Z", first: READ_PAGE_SIZE });
+    expect(v).toEqual({ organizationId: "org_test_1", channelIds: ["ch_a", "ch_b"], status: ["draft", "error", "needs_approval", "scheduled", "sending", "sent"], startDate: "2026-11-01T00:00:00.000Z", first: READ_PAGE_SIZE });
     expect(READ_PAGE_SIZE).toBe(50);
     expect(readStatusVariables({ organizationId: "o", channelIds: [], startDate: new Date(0), after: "cur_1" }).after).toBe("cur_1");
   });
