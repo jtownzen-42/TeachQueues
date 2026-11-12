@@ -43,7 +43,7 @@ export function parseRateLimit(headers: Headers): RateLimitInfo {
   return info;
 }
 
-export type GraphQLErrorItem = { message: string; extensions?: { code?: unknown } };
+export type GraphQLErrorItem = { message: string; path?: unknown[]; extensions?: { code?: unknown } };
 
 /** The first auth / rate-limit code in a GraphQL `errors` array, if any. */
 export function graphQLErrorCode(errors: GraphQLErrorItem[] | undefined): "UNAUTHORIZED" | "RATE_LIMIT_EXCEEDED" | null {
@@ -91,6 +91,37 @@ export async function bufferGraphQLWithMeta<T>(accessToken: string, query: strin
 
 export async function bufferGraphQL<T>(accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
   return (await bufferGraphQLWithMeta<T>(accessToken, query, variables)).data;
+}
+
+/** Like bufferGraphQLWithMeta, but field-level GraphQL errors (e.g. NOT_FOUND on one
+ *  aliased `post`) are returned instead of thrown, so a batch lookup can use the
+ *  posts that were found. Auth and rate-limit errors still throw. */
+export async function bufferGraphQLWithFieldErrors<T>(accessToken: string, query: string, variables?: Record<string, unknown>): Promise<{ data: T; errors: GraphQLErrorItem[]; windows: RateLimitWindow[] }> {
+  const res = await fetch(BUFFER_API_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+    cache: "no-store",
+  });
+  lastRateLimit = parseRateLimit(res.headers);
+  const windows = parseRateLimitWindows(res.headers);
+  const busy = (ra: number) => Object.assign(new BufferApiError("Buffer is busy (rate limited). Try again shortly.", 429, ra, lastRateLimit), { windows });
+  if (res.status === 429) {
+    const ra = parseRetryAfter(res.headers.get("retry-after"));
+    throw busy(ra);
+  }
+  if (res.status === 401) throw new BufferApiError("Buffer session expired. Please reconnect.", 401);
+  const json = (await res.json().catch(() => ({}))) as { data?: T; errors?: GraphQLErrorItem[] };
+  const code = graphQLErrorCode(json.errors);
+  if (code === "UNAUTHORIZED") throw new BufferApiError("Buffer session expired. Please reconnect.", 401);
+  if (code === "RATE_LIMIT_EXCEEDED") {
+    const ra = parseRetryAfter(res.headers.get("retry-after"));
+    throw busy(ra);
+  }
+  if (!res.ok) {
+    throw new BufferApiError(json.errors?.map((e) => e.message).join("; ") || `Buffer API error ${res.status}`, res.status);
+  }
+  return { data: (json.data ?? ({} as T)), errors: json.errors ?? [], windows };
 }
 
 export const ACCOUNT_QUERY = /* GraphQL */ `
