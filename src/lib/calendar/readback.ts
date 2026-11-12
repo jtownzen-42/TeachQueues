@@ -6,7 +6,7 @@ import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { bufferPosts, bufferRateLimits, drafts, users } from "@/db/schema";
 import type { SendDb } from "@/lib/buffer/send";
 import { bufferGraphQLWithMeta } from "@/lib/buffer/api";
-import { parsePostsPage, READ_STATUS_QUERY, readStatusVariables, type ReadPost } from "@/lib/buffer/read";
+import { fetchPostsByIds, parsePostsPage, READ_BY_ID_BATCH, READ_STATUS_QUERY, readStatusVariables, type ReadPost } from "@/lib/buffer/read";
 import { rateLimitState, type RateLimitWindow } from "@/lib/buffer/ratelimit";
 
 /** Opening /calendar reads Buffer only when the last successful read is older than this. */
@@ -153,9 +153,9 @@ export async function readBackStatuses(deps: ReadDeps, userId: string, opts: { t
   const baseVars = { organizationId: u.orgId, channelIds: rows.map((r) => r.channelId), startDate: new Date(oldest.getTime() - 86_400_000) };
   let after: string | null = null;
   let requests = 0;
-  let complete = false;
   let retried = false;
   let matched = 0;
+  let missingConfirmed = 0;
   let stop: ReadResult | null = null;
 
   while (requests < MAX_READ_PAGES && unmatched.size > 0) {
@@ -190,18 +190,67 @@ export async function readBackStatuses(deps: ReadDeps, userId: string, opts: { t
       unmatched.delete(p.id);
       matched++;
     }
-    if (!page.hasNextPage) { complete = true; break; }
+    if (!page.hasNextPage) break;
     if (!page.endCursor) break; // can't continue: incomplete
     after = page.endCursor;
   }
 
-  // Not found only after a complete scan; otherwise "not read this time" (rows untouched).
-  let missing = 0;
-  if (complete) {
-    for (const id of unmatched) { await writeMissing(db, userId, byPostId.get(id)!.id, now); missing++; }
+  // A finished list page is not enough to mark "not found": startDate/createdAt filters can
+  // omit unscheduled drafts (dueAt null) even when they still exist in Buffer. Confirm any
+  // leftover ids with post(id) before writing bufferMissingAt.
+  if (!stop && unmatched.size > 0 && requests < MAX_READ_PAGES) {
+    const leftover = [...unmatched];
+    for (let i = 0; i < leftover.length && requests < MAX_READ_PAGES; i += READ_BY_ID_BATCH) {
+      const batch = leftover.slice(i, i + READ_BY_ID_BATCH);
+      requests++;
+      try {
+        const res = await fetchPostsByIds(token, batch);
+        await recordWindows(db, res.windows, now);
+        if (res.result.fatal) {
+          console.error("[teachqueue] read-back: post-by-id had a non-NOT_FOUND error");
+          stop = { code: "read_failed", requests };
+          break;
+        }
+        for (const p of res.result.posts) {
+          const row = byPostId.get(p.id);
+          if (!row || row.channelId !== p.channelId || !unmatched.has(p.id)) continue;
+          await writeSeen(db, userId, row.id, p, now);
+          unmatched.delete(p.id);
+          matched++;
+        }
+        for (const id of res.result.notFound) {
+          const row = byPostId.get(id);
+          if (!row || !unmatched.has(id)) continue;
+          await writeMissing(db, userId, row.id, now);
+          unmatched.delete(id);
+          missingConfirmed += 1;
+        }
+      } catch (e) {
+        if (isApiError(e) && e.windows) await recordWindows(db, e.windows, now);
+        if (isApiError(e) && e.status === 429) {
+          const ra = e.retryAfter ?? 60;
+          if (ra <= SHORT_RETRY_MAX_S && !retried && requests < MAX_READ_PAGES) {
+            retried = true;
+            await sleep(ra * 1000);
+            i -= READ_BY_ID_BATCH; // retry this batch; counts toward MAX_READ_PAGES
+            continue;
+          }
+          await recordBusy(db, new Date(now.getTime() + ra * 1000), now);
+          stop = { code: "busy", retryAfter: ra, requests };
+          break;
+        }
+        if ((e as Error)?.name === "ReconnectRequired" || (isApiError(e) && e.status === 401)) { stop = { code: "reconnect", requests }; break; }
+        console.error("[teachqueue] read-back failed", (e as Error)?.name, isApiError(e) ? e.status : "");
+        stop = { code: "read_failed", requests };
+        break;
+      }
+    }
   }
+
+  // List-only "complete" must not mark leftovers missing; only a confirmed post(id) NOT_FOUND does.
+  const missing = missingConfirmed;
   if (stop) return { ...stop, matched, missing };
 
   await db.update(users).set({ postsReadAt: now }).where(eq(users.id, userId));
-  return { code: complete || unmatched.size === 0 ? "read_ok" : "read_partial", requests, matched, missing };
+  return { code: unmatched.size === 0 ? "read_ok" : "read_partial", requests, matched, missing };
 }

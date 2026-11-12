@@ -25,9 +25,33 @@ let sleep: ReturnType<typeof vi.fn>;
 let A: { userId: string; draftId: string; lessonId: string };
 let B: { userId: string; draftId: string };
 
+const headers = { "content-type": "application/json", RateLimit: RL, "RateLimit-Policy": POLICY };
 const pageResponse = (i: number) => {
   const p = pages[Math.min(i, pages.length - 1)];
-  return new Response(JSON.stringify({ data: { posts: { edges: p.nodes.map((node) => ({ node: { status: "draft", dueAt: null, sentAt: null, externalLink: null, error: null, ...node } })), pageInfo: { hasNextPage: p.hasNextPage ?? false, endCursor: p.endCursor ?? null } } } }), { status: 200, headers: { "content-type": "application/json", RateLimit: RL, "RateLimit-Policy": POLICY } });
+  return new Response(JSON.stringify({ data: { posts: { edges: p.nodes.map((node) => ({ node: { status: "draft", dueAt: null, sentAt: null, externalLink: null, error: null, ...node } })), pageInfo: { hasNextPage: p.hasNextPage ?? false, endCursor: p.endCursor ?? null } } } }), { status: 200, headers });
+};
+const knownNodes = () => new Map(pages.flatMap((p) => p.nodes).map((n) => [n.id, n]));
+const byIdResponse = (variables: Record<string, string>) => {
+  const data: Record<string, unknown> = {};
+  const errors: { message: string; path: string[]; extensions: { code: string } }[] = [];
+  const known = knownNodes();
+  for (const [key, id] of Object.entries(variables)) {
+    const i = key.replace(/^id/, "");
+    const alias = `p${i}`;
+    const node = known.get(id);
+    if (node) {
+      data[alias] = { status: "draft", dueAt: null, sentAt: null, externalLink: null, error: null, ...node };
+    } else {
+      data[alias] = null;
+      errors.push({ message: "Resource doesn't exist", path: [alias], extensions: { code: "NOT_FOUND" } });
+    }
+  }
+  return new Response(JSON.stringify({ data, ...(errors.length ? { errors } : {}) }), { status: 200, headers });
+};
+const responseFor = (req: RequestInit | undefined, i: number) => {
+  const body = String(req?.body ?? "");
+  if (body.includes("TeachQueuePostById") || /p0: post\(input/.test(body)) return byIdResponse(body ? JSON.parse(body).variables ?? {} : {});
+  return pageResponse(i);
 };
 const deps = (over: Partial<ReadDeps> = {}): ReadDeps => ({ db: sdb, getToken: async () => "tok_FAKE", now: () => NOW, sleep: sleep as unknown as ReadDeps["sleep"], ...over });
 const read = (userId: string, trigger: "auto" | "manual" = "manual", over: Partial<ReadDeps> = {}) => readBackStatuses(deps(over), userId, { trigger });
@@ -64,7 +88,7 @@ beforeEach(async () => {
   pages = [{ nodes: [] }];
   responder = null;
   let i = 0;
-  fetchMock = vi.fn(async () => (responder ? responder(i++) : pageResponse(i++)));
+  fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => (responder ? responder(i++) : responseFor(init, i++)));
   vi.stubGlobal("fetch", fetchMock);
   sleep = vi.fn(async () => {});
 });
@@ -81,7 +105,7 @@ describe("one request, the right query", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(bodies()[0]);
     expect(body.query).toMatch(/^\s*query /);
-    expect(body.variables).toEqual({ organizationId: "org_test_1", channelIds: ["ch_test_1"], status: ["draft", "error", "needs_approval", "scheduled", "sending", "sent"], startDate: new Date(NOW.getTime() - 3_600_000 - 86_400_000).toISOString(), first: 50 });
+    expect(body.variables).toEqual({ organizationId: "org_test_1", channelIds: ["ch_test_1"], status: ["draft", "error", "needs_approval", "scheduled", "sending", "sent"], createdAt: { start: new Date(NOW.getTime() - 3_600_000 - 86_400_000).toISOString() }, first: 50 });
     const after = await rowById(row.id);
     expect(after).toMatchObject({ bufferStatus: "sent", bufferError: null, externalLink: "https://www.linkedin.com/feed/update/9", bufferMissingAt: null });
     expect(after.dueAt?.toISOString()).toBe("2026-11-10T15:00:00.000Z");
@@ -139,10 +163,11 @@ describe("pagination", () => {
     expect(JSON.parse(bodies()[2]).variables.after).toBe("c2");
     expect((await rowById(rows[2].id)).bufferMissingAt).toBeNull(); // "not read this time"
   });
-  it("marks not found only after a complete scan, and clears it when seen again", async () => {
+  it("marks not found only after post(id) confirms NOT_FOUND, and clears it when seen again", async () => {
     const [r0, r1] = await manySent(2);
     pages = [{ nodes: [{ id: "post_test_0", channelId: "ch_test_1", status: "sent" }], hasNextPage: false }];
-    expect(await read(A.userId)).toMatchObject({ code: "read_ok", missing: 1 });
+    expect(await read(A.userId)).toMatchObject({ code: "read_ok", missing: 1, requests: 2 });
+    expect(bodies()[1]).toContain("TeachQueuePostById");
     expect((await rowById(r1.id)).bufferMissingAt?.toISOString()).toBe(NOW.toISOString());
     expect((await rowById(r0.id)).bufferMissingAt).toBeNull();
     const later = new Date(NOW.getTime() + REFRESH_COOLDOWN_MS + 1);
@@ -150,6 +175,34 @@ describe("pagination", () => {
     await read(A.userId, "manual", { now: () => later });
     expect((await rowById(r1.id)).bufferMissingAt).toBeNull();
     expect((await rowById(r1.id)).bufferStatus).toBe("scheduled");
+  });
+  it("finds an unscheduled draft the list page omitted (dueAt null) via post(id) and does not mark it missing", async () => {
+    const row = await sentRow(A.draftId, "post_draft_1", "ch_test_1");
+    // List "completes" with zero hits — the pre-fix startDate path that marked drafts not found.
+    pages = [{ nodes: [], hasNextPage: false }];
+    // But Buffer still has the draft when asked by id (override the default knownNodes miss).
+    responder = (i) => {
+      if (i === 0) return pageResponse(0);
+      return new Response(JSON.stringify({
+        data: { p0: { id: "post_draft_1", channelId: "ch_test_1", status: "draft", dueAt: null, sentAt: null, externalLink: null, error: null } },
+      }), { status: 200, headers });
+    };
+    const r = await read(A.userId);
+    expect(r).toMatchObject({ code: "read_ok", requests: 2, matched: 1, missing: 0 });
+    expect(bodies()[1]).toContain("TeachQueuePostById");
+    const after = await rowById(row.id);
+    expect(after.bufferStatus).toBe("draft");
+    expect(after.bufferMissingAt).toBeNull();
+  });
+  it("a failed post(id) lookup does not mark leftovers missing", async () => {
+    const row = await sentRow(A.draftId, "post_draft_1", "ch_test_1");
+    pages = [{ nodes: [], hasNextPage: false }];
+    responder = (i) => (i === 0 ? pageResponse(0) : (() => { throw new TypeError("fetch failed"); })());
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await read(A.userId);
+    spy.mockRestore();
+    expect(r).toMatchObject({ code: "read_failed", missing: 0 });
+    expect((await rowById(row.id)).bufferMissingAt).toBeNull();
   });
   it("unknown status keeps the previous one; error message is stored sanitized", async () => {
     const row = await sentRow(A.draftId, "post_test_1", "ch_test_1", { bufferStatus: "scheduled" });
@@ -175,6 +228,7 @@ describe("when not to read (zero fetches)", () => {
     expect((await read(A.userId, "auto")).code).toBe("not_due");
     expect(fetchMock).not.toHaveBeenCalled();
     await db.update(s.users).set({ postsReadAt: new Date(NOW.getTime() - AUTO_READ_AFTER_MS - 1), postsReadAttemptAt: new Date(NOW.getTime() - AUTO_READ_AFTER_MS - 1) }).where(eq(s.users.id, A.userId));
+    pages = [{ nodes: [{ id: "post_test_1", channelId: "ch_test_1", status: "draft" }] }];
     expect((await read(A.userId, "auto")).code).toBe("read_ok");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -297,6 +351,7 @@ describe("review hardening: cooldown is claimed atomically", () => {
   it("a refresh exactly 60 s after the last attempt is allowed", async () => {
     await sentRow(A.draftId, "post_test_1", "ch_test_1");
     await db.update(s.users).set({ postsReadAttemptAt: new Date(NOW.getTime() - REFRESH_COOLDOWN_MS) }).where(eq(s.users.id, A.userId));
+    pages = [{ nodes: [{ id: "post_test_1", channelId: "ch_test_1", status: "draft" }] }];
     expect((await read(A.userId)).code).toBe("read_ok");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

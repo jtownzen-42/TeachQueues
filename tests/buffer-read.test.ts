@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUFFER_POST_STATUSES, parsePostsPage, READ_PAGE_SIZE, READ_STATUS_QUERY, readStatusVariables } from "@/lib/buffer/read";
+import { BUFFER_POST_STATUSES, parsePostsById, parsePostsPage, READ_BY_ID_BATCH, READ_PAGE_SIZE, READ_STATUS_QUERY, readByIdQuery, readStatusVariables } from "@/lib/buffer/read";
 
 const TOKEN = "tok_FAKE_abcdefghijklmnopqrstuvwxyz0123456789";
 const node = (over: Record<string, unknown> = {}) => ({ id: "post_test_1", channelId: "ch_test_1", status: "sent", dueAt: "2026-11-10T15:00:00Z", sentAt: "2026-11-10T15:00:05Z", externalLink: "https://www.linkedin.com/feed/update/x", error: null, ...over });
@@ -19,7 +19,9 @@ describe("READ_STATUS_QUERY", () => {
   });
   it("variables: distinct sorted channel ids, every status (drafts included), ISO startDate, first 50, after only when set", () => {
     const v = readStatusVariables({ organizationId: "org_test_1", channelIds: ["ch_b", "ch_a", "ch_b"], startDate: new Date("2026-11-01T00:00:00Z") });
-    expect(v).toEqual({ organizationId: "org_test_1", channelIds: ["ch_a", "ch_b"], status: ["draft", "error", "needs_approval", "scheduled", "sending", "sent"], startDate: "2026-11-01T00:00:00.000Z", first: READ_PAGE_SIZE });
+    expect(v).toEqual({ organizationId: "org_test_1", channelIds: ["ch_a", "ch_b"], status: ["draft", "error", "needs_approval", "scheduled", "sending", "sent"], createdAt: { start: "2026-11-01T00:00:00.000Z" }, first: READ_PAGE_SIZE });
+    expect(READ_STATUS_QUERY).toContain("createdAt: $createdAt");
+    expect(READ_STATUS_QUERY).not.toContain("startDate");
     expect(READ_PAGE_SIZE).toBe(50);
     expect(readStatusVariables({ organizationId: "o", channelIds: [], startDate: new Date(0), after: "cur_1" }).after).toBe("cur_1");
   });
@@ -52,5 +54,37 @@ describe("parsePostsPage", () => {
     expect(parsePostsPage(page([node()], { hasNextPage: true, endCursor: "cur_2" }))).toMatchObject({ hasNextPage: true, endCursor: "cur_2" });
     for (const g of [null, undefined, {}, { posts: null }, { posts: { edges: "x" } }, "nope"]) expect(parsePostsPage(g)).toEqual({ posts: [], hasNextPage: false, endCursor: null });
     expect(parsePostsPage(page([{ channelId: "c" }, { id: 5, channelId: "c" }, null])).posts).toEqual([]);
+  });
+});
+
+describe("readByIdQuery / parsePostsById", () => {
+  it("puts ids in variables, never in the query string, and caps the documented alias batch at 30", () => {
+    const { query, variables } = readByIdQuery(["post_a", "post_b", "post_a"]);
+    expect(query).toMatch(/^query TeachQueuePostById\(/);
+    expect(query).toContain("p0: post(input: { id: $id0 })");
+    expect(query).toContain("p1: post(input: { id: $id1 })");
+    expect(query).not.toMatch(/mutation/i);
+    expect(query).not.toContain("post_a");
+    expect(query).not.toContain("post_b");
+    expect(variables).toEqual({ id0: "post_a", id1: "post_b" });
+    expect(READ_BY_ID_BATCH).toBe(30);
+  });
+  it("parses found posts (including unscheduled drafts) and NOT_FOUND aliases", () => {
+    const ids = ["post_draft", "post_gone"];
+    const data = {
+      p0: { id: "post_draft", channelId: "ch_1", status: "draft", dueAt: null, sentAt: null, externalLink: null, error: null },
+      p1: null,
+    };
+    const r = parsePostsById(data, ids, [{ message: "Resource doesn't exist", path: ["p1"], extensions: { code: "NOT_FOUND" } }]);
+    expect(r.fatal).toBe(false);
+    expect(r.notFound).toEqual(["post_gone"]);
+    expect(r.posts).toHaveLength(1);
+    expect(r.posts[0]).toMatchObject({ id: "post_draft", status: "draft", dueAt: null });
+  });
+  it("a non-NOT_FOUND field error is fatal and is not treated as missing", () => {
+    const r = parsePostsById({ p0: null }, ["post_x"], [{ message: "boom", path: ["p0"], extensions: { code: "UNEXPECTED" } }]);
+    expect(r.fatal).toBe(true);
+    expect(r.notFound).toEqual([]);
+    expect(r.posts).toEqual([]);
   });
 });
