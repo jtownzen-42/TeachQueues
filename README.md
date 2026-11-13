@@ -7,7 +7,7 @@
 
 - Live app: [teachqueue-app.vercel.app](https://teachqueue-app.vercel.app)
 - How it works: [teachqueue-app.vercel.app/how-it-works](https://teachqueue-app.vercel.app/how-it-works)
-- Demo video: [youtu.be/KzztRROxxqs](https://youtu.be/KzztRROxxqs)
+- Demo video: [youtu.be/NgxPCyZ2vwQ](https://youtu.be/NgxPCyZ2vwQ)
 - Privacy: [teachqueue-app.vercel.app/privacy](https://teachqueue-app.vercel.app/privacy)
 
 Built for [Buffer Commit 2026](https://commit.buffer.com) (Oct 28–Nov 13).
