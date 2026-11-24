@@ -10,6 +10,7 @@ import { campaignSlug } from "@/lib/campaigns/utm";
 import { idInput } from "@/lib/lessons/validation";
 import { resultsCsv } from "@/lib/results/csv";
 import { listResultDays } from "@/lib/results/service";
+import { errorName } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
   } catch (e) {
-    console.error("[teachqueue] results csv failed", (e as Error)?.name);
+    console.error("[teachqueue] results csv failed", errorName(e));
     return new NextResponse("Couldn't build the CSV right now.", { status: 500, headers: NO_STORE });
   }
 }

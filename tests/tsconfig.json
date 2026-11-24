@@ -1,0 +1,11 @@
+{
+  // Tests share the app's settings, minus noUncheckedIndexedAccess for now: test code
+  // reads fixtures with `const [row] = await db.insert(...).returning()` in ~260 places.
+  // Turning it on here is a good follow-up; app code (../src) is already checked with it on.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["../next-env.d.ts", "**/*.ts", "../vitest.config.ts"],
+  "exclude": []
+}

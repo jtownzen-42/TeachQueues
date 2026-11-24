@@ -19,6 +19,7 @@ import {
 import { saveCampaignImage } from "@/lib/campaigns/save";
 import { renderCampaignCreativePng } from "@/lib/campaigns/render";
 import { APPROVE_FIELDS, BRIEF_FIELDS, VARIANT_FIELDS } from "@/lib/campaigns/validation";
+import { errorName } from "@/lib/errors";
 
 const FORBIDDEN = "That request came from another site, so it was ignored.";
 const NOT_FOUND = "That item doesn't exist or isn't yours.";
@@ -40,7 +41,7 @@ export async function createCampaign(prev: FormState, fd: FormData): Promise<For
   try {
     r = await createService(getDb(), userId, values, new Date());
   } catch (e) {
-    console.error("[teachqueue] create campaign failed", (e as Error)?.name);
+    console.error("[teachqueue] create campaign failed", errorName(e));
     return fail(prev, values, { error: FAILED });
   }
   if (!r.ok) return fail(prev, values, { error: r.code === "no_product" ? "Pick one of your products." : "Please fix the highlighted fields.", fields: r.fields });
@@ -58,7 +59,7 @@ export async function updateCampaign(prev: FormState, fd: FormData): Promise<For
   try {
     r = await updateService(getDb(), userId, campaignId, values, new Date());
   } catch (e) {
-    console.error("[teachqueue] update campaign failed", (e as Error)?.name);
+    console.error("[teachqueue] update campaign failed", errorName(e));
     return fail(prev, values, { error: FAILED });
   }
   if (!r.ok) {
@@ -79,7 +80,7 @@ export async function saveCampaignVariants(prev: FormState, fd: FormData): Promi
   try {
     r = await saveVariantsService(getDb(), userId, values, new Date());
   } catch (e) {
-    console.error("[teachqueue] save campaign variants failed", (e as Error)?.name);
+    console.error("[teachqueue] save campaign variants failed", errorName(e));
     return fail(prev, values, { error: FAILED });
   }
   if (r.code === "variants_invalid") return fail(prev, values, { error: "Some variants need fixing before they can be saved. See the notes under each one.", fields: r.fields });
@@ -108,7 +109,7 @@ export async function saveCampaignImageAction(fd: FormData): Promise<void> {
     );
     code = r.code;
   } catch (e) {
-    console.error("[teachqueue] save campaign image crashed", (e as Error)?.name);
+    console.error("[teachqueue] save campaign image crashed", errorName(e));
     code = "image_failed";
   }
   if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
@@ -125,7 +126,7 @@ export async function approveCampaignDraft(fd: FormData): Promise<void> {
   try {
     code = (await approveService(getDb(), userId, formFields(fd, APPROVE_FIELDS), new Date())).code;
   } catch (e) {
-    console.error("[teachqueue] approve campaign failed", (e as Error)?.name);
+    console.error("[teachqueue] approve campaign failed", errorName(e));
     code = "error";
   }
   if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
@@ -154,7 +155,7 @@ export async function sendCampaignToBuffer(fd: FormData): Promise<void> {
       { ...raw, local: raw.mode === "custom" ? raw.local : undefined, confirmAnother: raw.confirmAnother || undefined, attachImage: raw.attachImage || undefined },
     );
   } catch (e) {
-    console.error("[teachqueue] campaign send crashed", (e as Error)?.name);
+    console.error("[teachqueue] campaign send crashed", errorName(e));
     redirect(back(backId, "error", "send"));
   }
   const campaignId = result.campaignId ?? backId;
@@ -174,7 +175,7 @@ export async function deleteCampaign(fd: FormData): Promise<void> {
   try {
     r = await deleteCampaignTree(getDb(), userId, campaignId);
   } catch (e) {
-    console.error("[teachqueue] delete campaign failed", (e as Error)?.name);
+    console.error("[teachqueue] delete campaign failed", errorName(e));
     redirect(back(campaignId, "error"));
   }
   if (r === "in_use") redirect(back(campaignId, "campaign_in_use"));

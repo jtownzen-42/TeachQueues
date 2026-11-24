@@ -12,6 +12,7 @@ import { formFields } from "@/lib/lessons/validation";
 import { deleteResultDay as deleteService, saveResultDay as saveService } from "@/lib/results/service";
 import { RESULT_FIELDS } from "@/lib/results/validation";
 import { safeTimeZone } from "@/lib/tz";
+import { errorName } from "@/lib/errors";
 
 const FORBIDDEN = "That request came from another site, so it was ignored.";
 const NOT_FOUND = "That item doesn't exist or isn't yours.";
@@ -26,7 +27,7 @@ export async function saveResultDay(prev: FormState, fd: FormData): Promise<Form
   try {
     r = await saveService(getDb(), userId, values, safeTimeZone(u?.tz), new Date());
   } catch (e) {
-    console.error("[teachqueue] save result day failed", (e as Error)?.name);
+    console.error("[teachqueue] save result day failed", errorName(e));
     return fail({ error: "Something went wrong saving that. Please try again." });
   }
   if (r.code === "result_invalid") return fail({ error: "Some numbers need fixing. See the notes below.", fields: r.fields });
@@ -44,7 +45,7 @@ export async function deleteResultDay(fd: FormData): Promise<void> {
   try {
     code = (await deleteService(getDb(), userId, formFields(fd, ["campaignId", "day"]))).code;
   } catch (e) {
-    console.error("[teachqueue] delete result day failed", (e as Error)?.name);
+    console.error("[teachqueue] delete result day failed", errorName(e));
     code = "error";
   }
   if (campaignId) revalidatePath(`/campaigns/${campaignId}/results`);

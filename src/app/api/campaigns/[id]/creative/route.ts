@@ -9,6 +9,7 @@ import { getCampaign } from "@/lib/campaigns/data";
 import { creativeGuard } from "@/lib/campaigns/guard";
 import { renderCampaignCreative } from "@/lib/campaigns/render";
 import { brandNameFor } from "@/lib/graphics/brand";
+import { errorName } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     g = await creativeGuard({ getUserId: sessionUserId, loadCampaign: getCampaign, getBrandName: (uid) => brandNameFor(getDb(), uid) }, id, sp.get("size"));
   } catch (e) {
-    console.error("[teachqueue] campaign creative failed", (e as Error)?.name);
+    console.error("[teachqueue] campaign creative failed", errorName(e));
     return new NextResponse("Couldn't draw the creative right now.", { status: 500, headers: NO_STORE });
   }
   if (g.status === 401) return new NextResponse("Sign in to see this creative.", { status: 401, headers: NO_STORE });

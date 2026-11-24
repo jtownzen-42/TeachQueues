@@ -3,6 +3,7 @@ import "server-only";
 // Every query is scoped by userId; anything that isn't the user's is "not_found" with no write.
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { campaigns, drafts, products } from "@/db/schema";
+import { assertDefined } from "@/lib/assert";
 import type { SendDb } from "@/lib/buffer/send";
 import { fieldErrors, type FieldErrors } from "@/lib/lessons/validation";
 import { approvalState } from "./approval";
@@ -50,6 +51,7 @@ export async function createCampaign(db: SendDb, userId: string, raw: unknown, n
   if (!parsed.success) return { ok: false, code: "invalid", fields: fieldErrors(parsed.error) };
   if (!(await ownsProduct(db, userId, parsed.data.productId))) return { ok: false, code: "no_product", fields: { productId: "Pick one of your products." } };
   const [row] = await db.insert(campaigns).values({ userId, ...briefColumns(parsed.data), createdAt: now, updatedAt: now }).returning({ id: campaigns.id });
+  assertDefined(row, "Campaign insert returned no row");
   return { ok: true, campaignId: row.id, code: "campaign_created" };
 }
 
@@ -98,6 +100,7 @@ export async function saveCampaignVariants(db: SendDb, userId: string, raw: unkn
     // created_at comes from the database clock so versions are strictly ordered (like the Lesson desk).
     const [row] = await db.insert(drafts).values({ userId, campaignId, lessonId: null, perChannelText, status: "draft" })
       .returning({ id: drafts.id });
+    assertDefined(row, "Draft insert returned no row");
     await touch();
     return { code: "draft_saved", campaignId, draftId: row.id, wrote: current ? "new_version" : "insert" };
   }
@@ -140,6 +143,7 @@ export async function approveCampaignDraft(db: SendDb, userId: string, raw: unkn
     imageUrl: draft.imageUrl, imageHash: draft.imageHash, imageSavedAt: draft.imageSavedAt,
     status: "approved", approvedHash: state.hash, approvedAt: now,
   }).returning({ id: drafts.id });
+  assertDefined(row, "Approved draft insert returned no row");
   return { code: "approved", campaignId, draftId: row.id };
 }
 

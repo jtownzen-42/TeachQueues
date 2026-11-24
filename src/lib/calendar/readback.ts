@@ -8,6 +8,7 @@ import type { SendDb } from "@/lib/buffer/send";
 import { bufferGraphQLWithMeta } from "@/lib/buffer/api";
 import { fetchPostsByIds, parsePostsPage, READ_BY_ID_BATCH, READ_STATUS_QUERY, readStatusVariables, type ReadPost } from "@/lib/buffer/read";
 import { rateLimitState, type RateLimitWindow } from "@/lib/buffer/ratelimit";
+import { errorName } from "@/lib/errors";
 
 /** Opening /calendar reads Buffer only when the last successful read is older than this. */
 export const AUTO_READ_AFTER_MS = 10 * 60_000;
@@ -108,7 +109,8 @@ export async function readBackStatuses(deps: ReadDeps, userId: string, opts: { t
   }).from(users).where(eq(users.id, userId));
   if (!u) return { code: "nothing_to_read", requests: 0 };
   const rows = await sentRowsFor(db, userId);
-  if (rows.length === 0 || !u.orgId) return { code: "nothing_to_read", requests: 0 };
+  const [firstRow] = rows;
+  if (!firstRow || !u.orgId) return { code: "nothing_to_read", requests: 0 };
   if (!u.hasToken) return { code: "reconnect", requests: 0 };
 
   // --- Cooldown (manual) / age (auto) ---
@@ -141,15 +143,15 @@ export async function readBackStatuses(deps: ReadDeps, userId: string, opts: { t
   try {
     token = await deps.getToken(userId);
   } catch (e) {
-    if ((e as Error)?.name === "ReconnectRequired" || (isApiError(e) && e.status === 401)) return { code: "reconnect", requests: 0 };
-    console.error("[teachqueue] read-back: token failed", (e as Error)?.name);
+    if (errorName(e) === "ReconnectRequired" || (isApiError(e) && e.status === 401)) return { code: "reconnect", requests: 0 };
+    console.error("[teachqueue] read-back: token failed", errorName(e));
     return { code: "read_failed", requests: 0 };
   }
 
   // --- Batched, paginated read: stop as soon as every id is matched ---
   const byPostId = new Map(rows.map((r) => [r.bufferPostId, r]));
   const unmatched = new Set(byPostId.keys());
-  const oldest = rows.reduce((m, r) => (r.createdAt < m ? r.createdAt : m), rows[0].createdAt);
+  const oldest = rows.reduce((m, r) => (r.createdAt < m ? r.createdAt : m), firstRow.createdAt);
   const baseVars = { organizationId: u.orgId, channelIds: rows.map((r) => r.channelId), startDate: new Date(oldest.getTime() - 86_400_000) };
   let after: string | null = null;
   let requests = 0;
@@ -178,8 +180,8 @@ export async function readBackStatuses(deps: ReadDeps, userId: string, opts: { t
         stop = { code: "busy", retryAfter: ra, requests };
         break;
       }
-      if ((e as Error)?.name === "ReconnectRequired" || (isApiError(e) && e.status === 401)) { stop = { code: "reconnect", requests }; break; }
-      console.error("[teachqueue] read-back failed", (e as Error)?.name, isApiError(e) ? e.status : "");
+      if (errorName(e) === "ReconnectRequired" || (isApiError(e) && e.status === 401)) { stop = { code: "reconnect", requests }; break; }
+      console.error("[teachqueue] read-back failed", errorName(e), isApiError(e) ? e.status : "");
       stop = { code: "read_failed", requests };
       break;
     }
@@ -239,8 +241,8 @@ export async function readBackStatuses(deps: ReadDeps, userId: string, opts: { t
           stop = { code: "busy", retryAfter: ra, requests };
           break;
         }
-        if ((e as Error)?.name === "ReconnectRequired" || (isApiError(e) && e.status === 401)) { stop = { code: "reconnect", requests }; break; }
-        console.error("[teachqueue] read-back failed", (e as Error)?.name, isApiError(e) ? e.status : "");
+        if (errorName(e) === "ReconnectRequired" || (isApiError(e) && e.status === 401)) { stop = { code: "reconnect", requests }; break; }
+        console.error("[teachqueue] read-back failed", errorName(e), isApiError(e) ? e.status : "");
         stop = { code: "read_failed", requests };
         break;
       }

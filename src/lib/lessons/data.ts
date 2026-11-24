@@ -23,7 +23,7 @@ export async function requireUserId(): Promise<string> {
 /** Same Origin check as the route handlers (src/lib/http.ts), for Server Actions. */
 export async function requestIsSameOrigin(): Promise<boolean> {
   const h = await headers();
-  const host = h.get("x-forwarded-host")?.split(",")[0].trim() || h.get("host");
+  const host = h.get("x-forwarded-host")?.split(",")[0]?.trim() || h.get("host");
   if (!host) return false;
   return isSameOrigin(h as unknown as Headers, `https://${host}`);
 }

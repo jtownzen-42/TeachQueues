@@ -8,6 +8,7 @@ import { getValidAccessToken } from "@/lib/buffer/tokens";
 import { sendDraftToBuffer } from "@/lib/buffer/send";
 import { parseId, requestIsSameOrigin, requireUserId } from "@/lib/lessons/data";
 import { formFields } from "@/lib/lessons/validation";
+import { errorName } from "@/lib/errors";
 
 export async function sendToBuffer(fd: FormData): Promise<void> {
   const backId = parseId(fd.get("lessonId"));
@@ -25,7 +26,7 @@ export async function sendToBuffer(fd: FormData): Promise<void> {
       { ...raw, local: raw.mode === "custom" ? raw.local : undefined, confirmAnother: raw.confirmAnother || undefined, attachImage: raw.attachImage || undefined },
     );
   } catch (e) {
-    console.error("[teachqueue] send to Buffer crashed", (e as Error)?.name);
+    console.error("[teachqueue] send to Buffer crashed", errorName(e));
     redirect(back("error"));
   }
 

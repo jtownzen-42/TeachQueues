@@ -10,6 +10,7 @@ import { LANDING } from "@/lib/onboarding/landing";
 import { loadOnboardingFacts } from "@/lib/onboarding/data";
 import { onboardingProgress, type OnboardingFacts } from "@/lib/onboarding/progress";
 import { BrandForm, GettingStarted, LoadSamplesForm, RemoveSamplesDetails } from "@/components/desk/Onboarding";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ async function loadUser(): Promise<Loaded> {
   try {
     userId = (await getAppSession()).userId;
   } catch (e) {
-    console.error("[teachqueue] session read failed", (e as Error).message);
+    console.error("[teachqueue] session read failed", errorMessage(e));
     return { state: "unavailable" };
   }
   if (!userId) return { state: "anon" };
@@ -45,7 +46,7 @@ async function loadUser(): Promise<Loaded> {
     const facts = { ...(await loadOnboardingFacts(getDb(), u.id)), channels };
     return { state: "connected", u, channels, channelError, facts };
   } catch (e) {
-    console.error("[teachqueue] home load failed", (e as Error).message);
+    console.error("[teachqueue] home load failed", errorMessage(e));
     return { state: "unavailable" };
   }
 }

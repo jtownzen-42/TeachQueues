@@ -10,7 +10,7 @@
     "dev:https": "next dev --experimental-https",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:check": "tsx scripts/migrate-check-pglite.ts",
     "db:migrate:http": "tsx scripts/migrate-http.ts"

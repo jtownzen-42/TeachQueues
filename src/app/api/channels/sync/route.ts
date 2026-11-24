@@ -4,6 +4,7 @@ import { getChannels } from "@/lib/buffer/sync";
 import { ReconnectRequired } from "@/lib/buffer/tokens";
 import { BufferApiError } from "@/lib/buffer/api";
 import { homeUrl, isSameOrigin } from "@/lib/http";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     if (e instanceof ReconnectRequired) return back("reconnect");
     if (e instanceof BufferApiError && e.status === 429) return back("busy");
-    console.error("[teachqueue] channel re-sync failed", (e as Error).message);
+    console.error("[teachqueue] channel re-sync failed", errorMessage(e));
     return back("error");
   }
 }

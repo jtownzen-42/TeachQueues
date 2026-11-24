@@ -8,6 +8,7 @@ import { saveLessonImage } from "@/lib/graphics/save";
 import { renderLessonCardPng } from "@/lib/graphics/render";
 import { parseId, requestIsSameOrigin, requireUserId } from "@/lib/lessons/data";
 import { formFields } from "@/lib/lessons/validation";
+import { errorName } from "@/lib/errors";
 
 export async function saveLessonImageAction(fd: FormData): Promise<void> {
   const backId = parseId(fd.get("lessonId"));
@@ -26,7 +27,7 @@ export async function saveLessonImageAction(fd: FormData): Promise<void> {
     );
     code = r.code;
   } catch (e) {
-    console.error("[teachqueue] save image crashed", (e as Error)?.name);
+    console.error("[teachqueue] save image crashed", errorName(e));
     code = "image_failed";
   }
   if (backId) revalidatePath(`/lessons/${backId}`);

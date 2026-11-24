@@ -1,6 +1,6 @@
 // "At a specific time" -> UTC, interpreted in the user's zone. Pure: used by the server
 // (which always recomputes UTC itself) and by the client-side live preview.
-import { formatInZone, localToUtcIso, safeTimeZone } from "@/lib/tz";
+import { formatInZone, localToUtcIso, parseLocalInput, safeTimeZone } from "@/lib/tz";
 
 /** Times slightly in the past are allowed (form filled, then a short delay). */
 export const PAST_GRACE_MS = 2 * 60_000;
@@ -16,8 +16,6 @@ export const DUE_AT_ERROR_TEXT: Record<DueAtError, string> = {
   time_past: "That time has already passed. Pick a time in the future.",
   time_far: "That's more than a year away. Pick a time within the next year.",
 };
-
-const LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
 /** Wall-clock "YYYY-MM-DDTHH:mm" of a UTC instant in `timeZone`. */
 export function utcToLocalInput(iso: string, timeZone: string): string {
@@ -38,22 +36,22 @@ export function utcToLocalInput(iso: string, timeZone: string): string {
  */
 export function resolveDueAt(local: string | null | undefined, tz: string | null | undefined, now: Date): DueAtResult {
   const zone = safeTimeZone(tz);
-  const m = LOCAL_RE.exec((local ?? "").trim());
-  if (!m) return { ok: false, code: "time_invalid" };
-  const [, , mo, d, h, mi] = m.map(Number);
+  const input = (local ?? "").trim();
+  const parts = parseLocalInput(input);
+  if (!parts) return { ok: false, code: "time_invalid" };
+  const { y, mo, d, h, mi } = parts;
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return { ok: false, code: "time_invalid" };
   let utcIso: string;
   try {
-    utcIso = localToUtcIso(m[0], zone);
+    utcIso = localToUtcIso(input, zone);
   } catch {
     return { ok: false, code: "time_invalid" };
   }
   if (!Number.isFinite(Date.parse(utcIso))) return { ok: false, code: "time_invalid" };
   // Round trip: a nonexistent date (Feb 30) or a spring-forward gap comes back different.
-  if (utcToLocalInput(utcIso, zone) !== m[0]) {
-    const [y, mm, dd] = [Number(m[1]), mo, d];
-    const real = new Date(Date.UTC(y, mm - 1, dd));
-    const dateExists = real.getUTCMonth() === mm - 1 && real.getUTCDate() === dd;
+  if (utcToLocalInput(utcIso, zone) !== input) {
+    const real = new Date(Date.UTC(y, mo - 1, d));
+    const dateExists = real.getUTCMonth() === mo - 1 && real.getUTCDate() === d;
     return { ok: false, code: dateExists ? "time_gap" : "time_invalid" };
   }
   const t = Date.parse(utcIso);

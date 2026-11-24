@@ -9,7 +9,7 @@ export function isTestMode(envValue: string | undefined, userTestMode: boolean |
 }
 
 export class TestModeViolation extends Error {
-  name = "TestModeViolation";
+  override name = "TestModeViolation";
 }
 
 /** Returns the input with saveToDraft forced on in test mode; throws if a caller tries

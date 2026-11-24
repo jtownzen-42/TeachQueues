@@ -14,11 +14,24 @@ export function safeTimeZone(tz: string | null | undefined): string {
 // Local wall-clock time in the user's zone -> UTC ISO string, DST-safe.
 import { TZDate } from "@date-fns/tz";
 
+const LOCAL_INPUT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+export type LocalInputParts = { y: number; mo: number; d: number; h: number; mi: number };
+
+/** Splits "YYYY-MM-DDTHH:mm" (a datetime-local input) into numbers, or null if it doesn't match. */
+export function parseLocalInput(local: string): LocalInputParts | null {
+  const m = LOCAL_INPUT_RE.exec(local);
+  if (!m) return null;
+  const [y, mo, d, h, mi] = m.slice(1).map(Number);
+  if (y === undefined || mo === undefined || d === undefined || h === undefined || mi === undefined) return null;
+  return { y, mo, d, h, mi };
+}
+
 /** `local` is "YYYY-MM-DDTHH:mm" as typed in a datetime-local input. */
 export function localToUtcIso(local: string, timeZone: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
-  if (!m) throw new Error(`Expected YYYY-MM-DDTHH:mm, got "${local}"`);
-  const [, y, mo, d, h, mi] = m.map(Number);
+  const parts = parseLocalInput(local);
+  if (!parts) throw new Error(`Expected YYYY-MM-DDTHH:mm, got "${local}"`);
+  const { y, mo, d, h, mi } = parts;
   const dt = new TZDate(y, mo - 1, d, h, mi, 0, timeZone);
   return new Date(dt.getTime()).toISOString();
 }
