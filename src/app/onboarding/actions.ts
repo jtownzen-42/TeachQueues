@@ -9,6 +9,7 @@ import { formFields } from "@/lib/lessons/validation";
 import { loadSamples, removeSamples } from "@/lib/onboarding/samples";
 import { saveBrandName as saveBrandService } from "@/lib/onboarding/brand";
 import { backInput } from "@/lib/onboarding/validation";
+import { errorName } from "@/lib/errors";
 
 const backTo = (fd: FormData) => backInput.parse(formFields(fd, ["back"])).back;
 const go = (back: string, code: string, anchor = "") => redirect(`${back}?n=${code}${anchor}`);
@@ -21,7 +22,7 @@ export async function loadSampleProducts(fd: FormData): Promise<void> {
   try {
     code = (await loadSamples(getDb(), userId)).code;
   } catch (e) {
-    console.error("[teachqueue] load samples failed", (e as Error)?.name);
+    console.error("[teachqueue] load samples failed", errorName(e));
     code = "error";
   }
   revalidatePath("/"); revalidatePath("/products"); revalidatePath("/campaigns");
@@ -36,7 +37,7 @@ export async function removeSampleProducts(fd: FormData): Promise<void> {
   try {
     code = (await removeSamples(getDb(), userId)).code;
   } catch (e) {
-    console.error("[teachqueue] remove samples failed", (e as Error)?.name);
+    console.error("[teachqueue] remove samples failed", errorName(e));
     code = "error";
   }
   revalidatePath("/"); revalidatePath("/products"); revalidatePath("/campaigns");
@@ -50,7 +51,7 @@ export async function saveBrandName(fd: FormData): Promise<void> {
   try {
     code = (await saveBrandService(getDb(), userId, formFields(fd, ["brandName"]))).code;
   } catch (e) {
-    console.error("[teachqueue] save brand failed", (e as Error)?.name);
+    console.error("[teachqueue] save brand failed", errorName(e));
     code = "error";
   }
   revalidatePath("/");

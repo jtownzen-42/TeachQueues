@@ -27,7 +27,7 @@ export function canonicalRedirectUrl(opts: {
   redirectUri: string | undefined;
 }): string | null {
   if (opts.vercelEnv !== "production" || !opts.host) return null;
-  const host = opts.host.toLowerCase().split(",")[0].trim();
+  const host = (opts.host.toLowerCase().split(",")[0] ?? "").trim();
   const canonical = canonicalHostFrom(opts.redirectUri).toLowerCase();
   if (host === canonical || !KNOWN_ALIAS_HOSTS.includes(host)) return null;
   return `https://${canonical}${opts.pathname}${opts.search}`;

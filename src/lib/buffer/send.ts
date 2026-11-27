@@ -19,6 +19,7 @@ import { cardModelHash, lessonCardModel } from "@/lib/graphics/card";
 import { currentImageUrl } from "@/lib/graphics/blob";
 import { approvalState, isApprovalCurrent } from "@/lib/campaigns/approval";
 import { campaignCreativeModel, creativeModelHash } from "@/lib/campaigns/creative";
+import { errorName } from "@/lib/errors";
 
 /** Max Buffer send attempts per user per rolling 24 hours. The app's Buffer quota is tiny and
  *  shared by everyone (and the judges), so this is deliberately low. */
@@ -169,7 +170,7 @@ export async function sendDraftToBuffer(deps: SendDeps, userId: string, raw: unk
     token = await deps.getToken(userId);
   } catch (e) {
     const m = sendErrorText(e);
-    if (m.code !== "reconnect") console.error("[teachqueue] send: token failed", (e as Error)?.name);
+    if (m.code !== "reconnect") console.error("[teachqueue] send: token failed", errorName(e));
     return { code: m.code === "reconnect" ? "reconnect" : "network", ...ref };
   }
 
@@ -304,7 +305,7 @@ export async function imageReachable(fetchImpl: typeof fetch, url: string): Prom
     const res = await fetchImpl(url, { method: "HEAD", redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(IMAGE_HEAD_TIMEOUT_MS) });
     return res.status === 200 && (res.headers.get("content-type") ?? "").toLowerCase().startsWith("image/");
   } catch (e) {
-    console.error("[teachqueue] send: image HEAD failed", (e as Error)?.name);
+    console.error("[teachqueue] send: image HEAD failed", errorName(e));
     return false;
   }
 }

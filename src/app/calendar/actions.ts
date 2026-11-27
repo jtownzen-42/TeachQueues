@@ -8,6 +8,7 @@ import { getDb } from "@/db";
 import { getValidAccessToken } from "@/lib/buffer/tokens";
 import { readBackStatuses } from "@/lib/calendar/readback";
 import { requestIsSameOrigin, requireUserId } from "@/lib/lessons/data";
+import { errorName } from "@/lib/errors";
 
 const refreshInput = z.object({});
 
@@ -32,7 +33,7 @@ export async function refreshFromBuffer(fd: FormData): Promise<void> {
     code = r.code === "not_due" ? "read_ok" : r.code;
     if (r.code === "busy" && r.retryAfter) wait = `&wait=${Math.max(1, Math.ceil(r.retryAfter / 60))}`;
   } catch (e) {
-    console.error("[teachqueue] refresh from Buffer crashed", (e as Error)?.name);
+    console.error("[teachqueue] refresh from Buffer crashed", errorName(e));
     code = "read_failed";
   }
   revalidatePath("/calendar");

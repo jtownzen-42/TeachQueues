@@ -7,6 +7,7 @@ import { getChannels } from "@/lib/buffer/sync";
 import { ReconnectRequired } from "@/lib/buffer/tokens";
 import { BufferApiError } from "@/lib/buffer/api";
 import { isTestMode } from "@/lib/testmode";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     if (e instanceof ReconnectRequired) return NextResponse.json({ connected: false, reconnect: true }, { status: 401 });
     if (e instanceof BufferApiError) return NextResponse.json({ error: e.status === 429 ? "rate_limited" : "buffer_error", retryAfter: e.retryAfter }, { status: e.status === 429 ? 429 : 502 });
-    console.error("[teachqueue] /api/me failed", (e as Error).message);
+    console.error("[teachqueue] /api/me failed", errorMessage(e));
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

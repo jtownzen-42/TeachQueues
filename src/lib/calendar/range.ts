@@ -28,7 +28,7 @@ export function localDayKey(iso: string | Date, tz: string): string {
 }
 
 // Calendar-date arithmetic on plain dates (no time zone involved).
-const toUtc = (key: string) => { const [y, m, d] = key.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+const toUtc = (key: string) => { const [y = NaN, m = NaN, d = NaN] = key.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
 const fromUtc = (d: Date) => d.toISOString().slice(0, 10);
 export const addDays = (key: string, n: number) => { const d = toUtc(key); d.setUTCDate(d.getUTCDate() + n); return fromUtc(d); };
 const addMonths = (key: string, n: number) => { const d = toUtc(key); return fromUtc(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1))); };

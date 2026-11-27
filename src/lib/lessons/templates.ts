@@ -64,7 +64,7 @@ function clean(s: string | null | undefined): string {
 /** "prompt engineering 101" -> "#PromptEngineering101" (letters/digits only; empty if nothing usable). */
 export function hashtagFor(term: string): string {
   const words = term.normalize("NFKD").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
-  const tag = words.map((w) => w[0].toUpperCase() + w.slice(1)).join("").slice(0, 40);
+  const tag = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("").slice(0, 40);
   return /^\p{N}+$/u.test(tag) || !tag ? "" : `#${tag}`;
 }
 

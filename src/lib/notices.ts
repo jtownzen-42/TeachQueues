@@ -7,7 +7,7 @@ import { IMAGE_SAVE_LIMIT_PER_DAY } from "./graphics/limits";
 
 export type Notice = { kind: "error" | "info"; text: string };
 
-const AUTH_ERRORS: Record<string, string> = {
+const AUTH_ERRORS = {
   denied: "You cancelled the Buffer consent screen. Nothing was connected.",
   state: "That sign-in link expired or was opened in another browser. Please try again.",
   invalid_grant: "Buffer said the sign-in code was already used or expired. Please try again.",
@@ -15,26 +15,33 @@ const AUTH_ERRORS: Record<string, string> = {
   missing_code: "Buffer didn't send a sign-in code back. Please try again.",
   buffer: "Buffer reported a problem during sign-in. Please try again.",
   exchange_failed: "Connecting to Buffer failed. Please try again in a minute.",
-};
+} satisfies Record<string, string>;
 
-const SYNC: Record<string, Notice> = {
+const SYNC = {
   ok: { kind: "info", text: "Channels re-synced from Buffer." },
   cooldown: { kind: "info", text: "Channels were synced less than a minute ago, so we showed the saved list. Try again in a minute." },
   busy: { kind: "error", text: "Buffer is busy right now (rate limited). Your saved channel list is shown; try again shortly." },
   reconnect: { kind: "error", text: "Your Buffer connection has expired. Please connect again." },
   error: { kind: "error", text: "Couldn't reach Buffer to re-sync channels. Your saved list is shown; try again shortly." },
-};
+} satisfies Record<string, Notice>;
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** Looks a query-string code up in a table. Own keys only, so "toString" or "constructor"
+ *  can't reach Object.prototype and come back as a "notice". */
+function lookup<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(table, key) ? table[key] : undefined;
+}
 
 export function noticesFrom(sp: Record<string, string | string[] | undefined>): Notice[] {
   const out: Notice[] = [];
   const auth = one(sp.auth_error);
   if (auth) {
-    out.push({ kind: "error", text: AUTH_ERRORS[auth] ?? (auth.startsWith("http_") ? AUTH_ERRORS.exchange_failed : "Connecting to Buffer failed. Please try again.") });
+    out.push({ kind: "error", text: lookup<string>(AUTH_ERRORS, auth) ?? (auth.startsWith("http_") ? AUTH_ERRORS.exchange_failed : "Connecting to Buffer failed. Please try again.") });
   }
   const sync = one(sp.sync);
-  if (sync && SYNC[sync]) out.push(SYNC[sync]);
+  const syncNotice = sync ? lookup<Notice>(SYNC, sync) : undefined;
+  if (syncNotice) out.push(syncNotice);
   if (one(sp.connected)) out.push({ kind: "info", text: "Connected to Buffer." });
   if (one(sp.deleted)) out.push({ kind: "info", text: "Deleted. TeachQueue removed your account and everything it stored for you." });
   else if (one(sp.disconnected)) out.push({ kind: "info", text: "Disconnected. TeachQueue no longer holds your Buffer tokens." });
@@ -43,7 +50,7 @@ export function noticesFrom(sp: Record<string, string | string[] | undefined>): 
 }
 
 // Lesson desk banners (/products, /products/[id], /lessons/[id]) come from ?n=<code>.
-const DESK: Record<string, Notice> = {
+const DESK = {
   product_created: { kind: "info", text: "Product added." },
   product_saved: { kind: "info", text: "Product saved." },
   product_deleted: { kind: "info", text: "Product and its lessons deleted." },
@@ -108,22 +115,24 @@ const DESK: Record<string, Notice> = {
   brand_saved: { kind: "info", text: "Brand name saved. New graphics use it; saved images will show as out of date until you save them again." },
   brand_invalid: { kind: "error", text: "That brand name can't be used. Use up to 40 characters with no control or invisible characters." },
   image_unreachable: { kind: "error", text: "The saved image couldn't be reached, so nothing was sent to Buffer. Save the image again, then retry." },
-};
+} satisfies Record<string, Notice>;
 
 export function deskNoticesFrom(sp: Record<string, string | string[] | undefined>): Notice[] {
   const n = one(sp.n);
-  if (!n || !DESK[n]) return [];
+  const notice = n ? lookup<Notice>(DESK, n) : undefined;
+  if (!notice) return [];
   // busy may carry ?wait=<minutes>: digits only, clamped, so no arbitrary text reaches the page.
   const wait = one(sp.wait);
   if (n === "busy" && wait && /^\d{1,4}$/.test(wait)) {
     const m = Math.min(Math.max(Number(wait), 1), 1440);
     return [{ kind: "error", text: `Buffer is busy right now. Nothing was posted. Try again in ${m} min.` }];
   }
-  return [DESK[n]];
+  return [notice];
 }
 
-export function deskNotice(code: keyof typeof DESK | string): Notice {
-  return DESK[code] ?? DESK.error;
+// `string & {}` keeps editor autocomplete for the known codes while still accepting any string.
+export function deskNotice(code: keyof typeof DESK | (string & {})): Notice {
+  return lookup<Notice>(DESK, code) ?? DESK.error;
 }
 
 /** Friendly text for a channel load failure (never raw upstream messages). */

@@ -10,7 +10,7 @@ const REFRESH_SKEW_MS = 120_000; // refresh 2 minutes before expiry
 
 export class ReconnectRequired extends Error {
   constructor(message = "Please reconnect your Buffer account.") { super(message); }
-  name = "ReconnectRequired";
+  override name = "ReconnectRequired";
 }
 
 export const enc = (s: string) => encryptWithKey(s, env.tokenEncKey);

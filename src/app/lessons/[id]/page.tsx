@@ -5,7 +5,7 @@ import { getDb } from "@/db";
 import { users, type BufferChannel } from "@/db/schema";
 import { getLatestLessonDraft, getLessonWithProduct, listLessonBufferPosts, parseId, requireUserId } from "@/lib/lessons/data";
 import { channelErrorText, deskNoticesFrom, type Notice } from "@/lib/notices";
-import { charCount, draftAll, FORMAT_LABELS, LIMITS, NETWORK_LABELS, NETWORKS, type DraftTexts } from "@/lib/lessons/templates";
+import { charCount, draftAll, FORMAT_LABELS, LIMITS, NETWORK_LABELS, type DraftTexts } from "@/lib/lessons/templates";
 import { getChannels } from "@/lib/buffer/sync";
 import { networkForService } from "@/lib/buffer/posts";
 import { isTestMode } from "@/lib/testmode";
@@ -29,8 +29,10 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<str
 
 /** A saved draft only counts if it has text for every network we draft. */
 function savedTexts(per: Record<string, string> | null | undefined): DraftTexts | null {
-  if (!per || !NETWORKS.every((n) => typeof per[n] === "string")) return null;
-  return { x: per.x, facebook: per.facebook, linkedin: per.linkedin };
+  if (!per) return null;
+  const { x, facebook, linkedin } = per;
+  if (typeof x !== "string" || typeof facebook !== "string" || typeof linkedin !== "string") return null;
+  return { x, facebook, linkedin };
 }
 
 function serviceLabel(service: string): string {

@@ -16,6 +16,7 @@ import { formatInZone, safeTimeZone } from "@/lib/tz";
 import { refreshFromBuffer } from "./actions";
 import { loadCalendarFacts } from "@/lib/onboarding/data";
 import { btn, card, Crumbs, linkCls, muted, NoticeBox } from "@/components/desk/ui";
+import { errorName } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Calendar · TeachQueue" };
@@ -66,7 +67,7 @@ export default async function CalendarPage({ searchParams }: Props) {
     const r = await readBackStatuses({ db, getToken: getValidAccessToken, now: () => now }, userId, { trigger: "auto" });
     autoNotice = AUTO_NOTICE[r.code] ?? null;
   } catch (e) {
-    console.error("[teachqueue] calendar auto read failed", (e as Error)?.name);
+    console.error("[teachqueue] calendar auto read failed", errorName(e));
     autoNotice = AUTO_NOTICE.read_failed!;
   }
 

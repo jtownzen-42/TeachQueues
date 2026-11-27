@@ -2,12 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
+import { assertDefined } from "@/lib/assert";
 import { getAppSession, getOAuthSession } from "@/lib/session";
 import { exchangeCode, OAuthError } from "@/lib/buffer/oauth";
 import { ACCOUNT_QUERY, bufferGraphQL, type AccountData } from "@/lib/buffer/api";
 import { tokenColumns } from "@/lib/buffer/tokens";
 import { getChannels } from "@/lib/buffer/sync";
 import { safeTimeZone } from "@/lib/tz";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -57,16 +59,17 @@ export async function GET(req: NextRequest) {
       target: users.bufferAccountId,
       set: { email: account.email ?? null, displayName: account.name ?? null, orgId: org?.id ?? null, orgName: org?.name ?? null, channelsCache: null, channelsSyncedAt: null, ...cols },
     }).returning({ id: users.id });
+    assertDefined(u, "User upsert returned no row");
 
     const session = await getAppSession();
     session.userId = u.id;
     await session.save();
 
-    try { await getChannels(u.id, true); } catch (e) { console.warn("[teachqueue] channel sync after connect failed", (e as Error).message); }
+    try { await getChannels(u.id, true); } catch (e) { console.warn("[teachqueue] channel sync after connect failed", errorMessage(e)); }
     return home(req, { connected: "1" });
   } catch (e) {
     const codeName = e instanceof OAuthError ? e.code : "exchange_failed";
-    console.error("[teachqueue] OAuth callback failed:", codeName, (e as Error).message);
+    console.error("[teachqueue] OAuth callback failed:", codeName, errorMessage(e));
     return home(req, { auth_error: codeName });
   }
 }

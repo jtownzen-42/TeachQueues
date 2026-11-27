@@ -100,7 +100,7 @@ export function containsExactLink(text: string, link: string): boolean {
   if (!link) return false;
   let i = text.indexOf(link);
   while (i !== -1) {
-    const before = i === 0 ? "" : text[i - 1];
+    const before = i === 0 ? "" : text.charAt(i - 1);
     const rest = text.slice(i + link.length);
     const okBefore = before === "" || /\s|\(/.test(before);
     const okAfter = rest === "" || /^[\s)]/.test(rest) || /^[.,!?;:]+(?:\s|\)|$)/.test(rest);
@@ -128,6 +128,8 @@ export function campaignDraftProblems(texts: Partial<CampaignTexts>, product: Pr
 }
 
 export function campaignTextsFrom(per: Record<string, string> | null | undefined): CampaignTexts | null {
-  if (!per || !CAMPAIGN_NETWORKS.every((n) => typeof per[n] === "string")) return null;
-  return { x: per.x, facebook: per.facebook, linkedin: per.linkedin, reddit: per.reddit };
+  if (!per) return null;
+  const { x, facebook, linkedin, reddit } = per;
+  if (typeof x !== "string" || typeof facebook !== "string" || typeof linkedin !== "string" || typeof reddit !== "string") return null;
+  return { x, facebook, linkedin, reddit };
 }

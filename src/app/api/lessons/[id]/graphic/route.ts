@@ -9,6 +9,7 @@ import { getLessonWithProduct } from "@/lib/lessons/data";
 import { graphicGuard } from "@/lib/graphics/guard";
 import { renderLessonCard } from "@/lib/graphics/render";
 import { brandNameFor } from "@/lib/graphics/brand";
+import { errorName } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     g = await graphicGuard({ getUserId: sessionUserId, loadLesson: getLessonWithProduct, getBrandName: (uid) => brandNameFor(getDb(), uid) }, id);
   } catch (e) {
-    console.error("[teachqueue] graphic preview failed", (e as Error)?.name);
+    console.error("[teachqueue] graphic preview failed", errorName(e));
     return new NextResponse("Couldn't draw the graphic right now.", { status: 500, headers: NO_STORE });
   }
   if (g.status === 401) return new NextResponse("Sign in to see this graphic.", { status: 401, headers: NO_STORE });

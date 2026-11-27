@@ -5,6 +5,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { drafts } from "@/db/schema";
 import type { SendDb } from "@/lib/buffer/send";
 import { isPublicBlobUrl } from "./blob";
+import { errorName } from "@/lib/errors";
 
 export async function deleteUserImages(db: SendDb, userId: string, del: (urls: string[]) => Promise<void>): Promise<number> {
   try {
@@ -14,7 +15,7 @@ export async function deleteUserImages(db: SendDb, userId: string, del: (urls: s
     if (urls.length > 0) await del(urls);
     return urls.length;
   } catch (e) {
-    console.error("[teachqueue] blob cleanup on delete failed", (e as Error)?.name);
+    console.error("[teachqueue] blob cleanup on delete failed", errorName(e));
     return 0;
   }
 }

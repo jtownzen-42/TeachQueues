@@ -9,7 +9,7 @@ export class BufferApiError extends Error {
   constructor(message: string, public status: number, public retryAfter?: number, public rateLimit?: RateLimitInfo) {
     super(message);
   }
-  name = "BufferApiError";
+  override name = "BufferApiError";
   /** Parsed per-window rate-limit headers (set on 429s by bufferGraphQLWithMeta). */
   windows?: RateLimitWindow[];
 }

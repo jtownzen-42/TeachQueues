@@ -6,12 +6,14 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { drafts, lessons, products } from "@/db/schema";
+import { assertDefined } from "@/lib/assert";
 import {
   deleteLessonTree, deleteProductTree, getLessonDraft, getLessonWithProduct, getProduct,
   parseId, pgCode, requestIsSameOrigin, requireUserId,
 } from "@/lib/lessons/data";
 import { draftInput, DRAFT_FIELDS, fieldErrors, formFields, lessonInput, productInput, type FieldErrors } from "@/lib/lessons/validation";
 import { draftProblems, NETWORKS, type DraftTexts } from "@/lib/lessons/templates";
+import { errorMessage } from "@/lib/errors";
 
 export type FormState = {
   /** Bumps on every response so the client form remounts with `values`. */
@@ -58,10 +60,11 @@ export async function saveProduct(prev: FormState, fd: FormData): Promise<FormSt
       id = productId;
     } else {
       const [row] = await getDb().insert(products).values({ userId, name, url, brandColors: [brandColor] }).returning({ id: products.id });
+      assertDefined(row, "Product insert returned no row");
       id = row.id;
     }
   } catch (e) {
-    console.error("[teachqueue] save product failed", pgCode(e) ?? (e as Error).message);
+    console.error("[teachqueue] save product failed", pgCode(e) ?? errorMessage(e));
     return fail(prev, values, { error: FAILED });
   }
   revalidatePath("/products");
@@ -78,7 +81,7 @@ export async function deleteProduct(fd: FormData): Promise<void> {
     result = await deleteProductTree(userId, productId);
   } catch (e) {
     const code = pgCode(e);
-    console.error("[teachqueue] delete product failed", code ?? (e as Error).message);
+    console.error("[teachqueue] delete product failed", code ?? errorMessage(e));
     if (code !== "23503") redirect(`/products/${productId}?n=error`); // 23503 = still referenced
     result = "in_use";
   }
@@ -114,10 +117,11 @@ export async function saveLesson(prev: FormState, fd: FormData): Promise<FormSta
     } else {
       if (!(await getProduct(userId, productId!))) return fail(prev, values, { error: NOT_FOUND });
       const [row] = await getDb().insert(lessons).values({ ...parsed.data, productId: productId! }).returning({ id: lessons.id });
+      assertDefined(row, "Lesson insert returned no row");
       id = row.id;
     }
   } catch (e) {
-    console.error("[teachqueue] save lesson failed", pgCode(e) ?? (e as Error).message);
+    console.error("[teachqueue] save lesson failed", pgCode(e) ?? errorMessage(e));
     return fail(prev, values, { error: FAILED });
   }
   revalidatePath("/products");
@@ -133,7 +137,7 @@ export async function deleteLesson(fd: FormData): Promise<void> {
   try {
     out = await deleteLessonTree(userId, lessonId);
   } catch (e) {
-    console.error("[teachqueue] delete lesson failed", pgCode(e) ?? (e as Error).message);
+    console.error("[teachqueue] delete lesson failed", pgCode(e) ?? errorMessage(e));
     redirect(`/lessons/${lessonId}?n=error`);
   }
   if (out.result === "not_found") redirect("/products?n=not_found");
@@ -169,7 +173,7 @@ export async function saveDraft(prev: FormState, fd: FormData): Promise<FormStat
       await getDb().insert(drafts).values({ userId, lessonId: owned.lesson.id, perChannelText, status: "draft" });
     }
   } catch (e) {
-    console.error("[teachqueue] save draft failed", pgCode(e) ?? (e as Error).message);
+    console.error("[teachqueue] save draft failed", pgCode(e) ?? errorMessage(e));
     return fail(prev, values, { error: FAILED });
   }
   revalidatePath(`/lessons/${owned.lesson.id}`);

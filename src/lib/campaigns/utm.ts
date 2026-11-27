@@ -36,7 +36,7 @@ export function buildUtmUrl(productUrl: string, utm: { source: string; medium: s
   if (u.protocol !== "https:") throw new Error("Product URL must be https");
   const keep = u.search.replace(/^\?/, "").split("&").filter((pair) => {
     if (!pair) return false;
-    const rawKey = pair.split("=")[0];
+    const [rawKey = ""] = pair.split("=");
     let key = rawKey;
     try { key = decodeURIComponent(rawKey.replace(/\+/g, " ")); } catch { /* keep raw */ }
     return !UTM_KEYS.has(key.toLowerCase());

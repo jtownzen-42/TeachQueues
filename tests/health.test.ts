@@ -26,17 +26,17 @@ function jsonResponse(status = 401) {
 describe("pingBufferApi", () => {
   it("treats any HTTP response as reachable and records latency", async () => {
     let t = 1_000;
-    const fetchFn = vi.fn(async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => {
       t += 42;
       return jsonResponse(401);
     });
     const result = await pingBufferApi({ fetch: fetchFn, now: () => t });
     expect(result).toEqual({ reachable: true, latencyMs: 42 });
     expect(fetchFn).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe(BUFFER_HEALTH_URL);
-    expect(init.method).toBe("GET");
-    const headers = new Headers(init.headers);
+    expect(init?.method).toBe("GET");
+    const headers = new Headers(init?.headers);
     expect(headers.get("authorization")).toBeNull();
     expect(headers.get("Authorization")).toBeNull();
   });

@@ -20,7 +20,7 @@ export const DB_URL_CANDIDATES = [
 export function normalizeSslMode(url: string): string {
   const m = /^([^?#]*)\?([^#]*)(#.*)?$/.exec(url);
   if (!m) return url;
-  const [, base, query, hash = ""] = m;
+  const [, base = "", query = "", hash = ""] = m;
   const parts = query.split("&");
   if (parts.some((p) => /^uselibpqcompat=true$/i.test(p))) return url;
   let changed = false;
